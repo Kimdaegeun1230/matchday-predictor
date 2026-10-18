@@ -1,7 +1,8 @@
 .env
 .claude/
 data/cache/
-data/media/
+data/media/*
+!data/media/media.json
 data/availability.json
 output/
 site/

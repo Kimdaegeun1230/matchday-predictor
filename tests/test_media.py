@@ -135,6 +135,34 @@ class StoreTest(unittest.TestCase):
             self.assertEqual(stats["bbc sport|guest"].outcome_hits, 0)
 
 
+class ManualImportTest(unittest.TestCase):
+    def test_export_and_import(self):
+        from football_predictor.media.manual import export_due, import_found
+        now = datetime.now(UTC)
+        ars, che = team("Arsenal", 1), team("Chelsea", 2)
+        soon = match(500, ars, che, now + timedelta(hours=20))
+        coordinator = SimpleNamespace(provider=SimpleNamespace(get_matches=lambda league, d: [soon]))
+        with tempfile.TemporaryDirectory() as tmp:
+            store_path, due_path, found = Path(tmp) / "media.json", Path(tmp) / "due.json", Path(tmp) / "found.json"
+            r = export_due(coordinator, "EPL", due_path, store_path=store_path)
+            self.assertEqual(r["fixtures"], 1)
+            due = json.loads(due_path.read_text(encoding="utf-8"))
+            self.assertEqual(due["fixtures"][0]["fixture_id"], "500")
+            found.write_text(json.dumps([
+                {"fixture_id": "500", "outlet": "Sky Sports", "author": "Jones Knows", "home_goals": 1,
+                 "away_goals": 1, "url": "https://www.skysports.com/football/news/x", "headline": "Predictions"},
+                {"fixture_id": "500", "outlet": "Blog", "author": "Anon", "home_goals": 3, "away_goals": 0,
+                 "url": "https://someblog.example/x", "headline": "no"},
+            ]), encoding="utf-8")
+            r = import_found(due_path, found, store_path)
+            self.assertEqual((r["accepted"], r["rejected"]), (1, 1))
+            store = MediaStore(store_path)
+            self.assertIn("500", store.collected)
+            # 이미 모은 경기는 다음 목록에서 빠짐
+            r = export_due(coordinator, "EPL", due_path, store_path=store_path)
+            self.assertEqual(r["fixtures"], 0)
+
+
 class ConsensusTest(unittest.TestCase):
     def _ctx(self, tmp, media):
         ars, che = team("Arsenal", 1), team("Chelsea", 2)

@@ -93,6 +93,14 @@ def main(argv: list[str] | None = None) -> int:
     m = sub.add_parser("collect-media", help="영국 현지 매체 예측 수집 (Claude, ANTHROPIC_API_KEY 필요)")
     m.add_argument("--max-calls", type=int, default=None, help="이번 실행의 Claude 호출 상한")
 
+    d = sub.add_parser("media-due", help="매체 예측을 수집할 경기 목록을 JSON 으로 내보내기 (예약 실행용)")
+    d.add_argument("--out", default="data/media/due.json")
+    d.add_argument("--max-days", type=int, default=4, help="한 번에 다룰 경기 날짜 수")
+
+    i = sub.add_parser("media-import", help="찾은 매체 예측(JSON)을 검사해 기록에 합치기 (예약 실행용)")
+    i.add_argument("found", help="찾은 예측 JSON 파일")
+    i.add_argument("--due", default="data/media/due.json")
+
     r = sub.add_parser("media-restore", help="배포된 사이트에서 매체 예측 기록을 내려받기 (없을 때만)")
     r.add_argument("--from", dest="site_url", required=True, help="사이트 주소 (예: https://아이디.github.io/저장소/)")
 
@@ -129,6 +137,21 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"{key}: Claude 호출 {r['calls']}회, 대상 {r.get('matches', 0)}경기, 예측 {r['found']}건"
                       + (f" (입력 {u.get('input_tokens', 0):,} / 출력 {u.get('output_tokens', 0):,} 토큰,"
                          f" 웹 검색 {u.get('web_searches', 0)}회)" if u else ""))
+        return 0
+
+    if args.cmd == "media-due":
+        from pathlib import Path
+        from football_predictor.media.manual import export_due
+        r = export_due(CoordinatorAgent(write_files=False), "EPL", Path(args.out), args.max_days)
+        print(f"수집할 경기 {r['fixtures']}개 ({r['days']}일치) → {args.out}")
+        return 0
+
+    if args.cmd == "media-import":
+        from pathlib import Path
+        from football_predictor.media.manual import import_found
+        r = import_found(Path(args.due), Path(args.found))
+        print(f"제출 {r['submitted']}건 중 {r['accepted']}건 반영 (새 예측 {r['new']}건, 제외 {r['rejected']}건)"
+              f" · 대상 경기 {r['fixtures']}개 · 누적 {r['total']}건")
         return 0
 
     if args.cmd == "media-restore":

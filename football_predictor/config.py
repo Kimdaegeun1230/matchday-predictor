@@ -83,12 +83,12 @@ OPENFOOTBALL_URL = "https://raw.githubusercontent.com/openfootball/football.json
 MEDIA_FILE = DATA_DIR / "media" / "media.json"
 MEDIA_MODEL = os.environ.get("MEDIA_MODEL", "claude-opus-5-5")
 MEDIA_EFFORT = os.environ.get("MEDIA_EFFORT", "medium")
-# 영국 현지 매체 (검색 허용 도메인)
+# 검색 허용 도메인: Claude(Anthropic)의 접근을 허용하는 영국 축구 매체만.
+# BBC, Guardian, Telegraph, Times, Independent, Mail, Mirror, Standard, Sun, Express, talkSPORT, Reach 지역지,
+# The Athletic(nytimes.com)은 AI 접근을 막아 두었으므로(2026-10 확인) 넣지 않는다 — 넣으면 웹 검색 요청이 400 으로 실패.
 MEDIA_DOMAINS = [
-    "bbc.co.uk", "bbc.com", "skysports.com", "theguardian.com", "telegraph.co.uk", "thetimes.com",
-    "thetimes.co.uk", "independent.co.uk", "dailymail.co.uk", "mirror.co.uk", "standard.co.uk",
-    "talksport.com", "thesun.co.uk", "express.co.uk", "football.london", "manchestereveningnews.co.uk",
-    "liverpoolecho.co.uk", "nytimes.com",
+    "skysports.com", "fourfourtwo.com", "football365.com", "planetfootball.com", "givemesport.com",
+    "90min.com", "goal.com",
 ]
 
 

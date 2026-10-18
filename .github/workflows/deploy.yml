@@ -50,7 +50,8 @@ jobs:
       - name: Check data sources
         run: python main.py check-sources
 
-      # 지난 배포에 올려 둔 매체 예측 기록을 받아 이어서 쌓는다 (칼럼니스트 적중률 유지)
+      # 매체 예측 기록: 저장소의 data/media/media.json (예약 실행이 올림)을 우선 쓰고,
+      # 없으면 지난 배포에 올려 둔 것을 받아 이어서 쌓는다 (칼럼니스트 적중률 유지)
       - name: Restore media history
         run: python main.py media-restore --from "${{ steps.pages.outputs.base_url }}"
 
