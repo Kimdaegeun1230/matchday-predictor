@@ -49,12 +49,14 @@ FIXTURES = [{"id": "11", "home": "Arsenal", "away": "Chelsea", "kickoff": "2026-
 class CollectorTest(unittest.TestCase):
     def test_pause_then_record(self):
         record = block(type="tool_use", name="record_predictions", input={"predictions": [
-            {"fixture_id": "11", "outlet": "BBC Sport", "author": "Chris Sutton", "home_goals": 2, "away_goals": 1,
-             "url": "https://www.bbc.co.uk/sport/football/articles/x", "headline": "Sutton's predictions"},
+            {"fixture_id": "11", "outlet": "Sky Sports", "author": "Lewis Jones", "home_goals": 2, "away_goals": 1,
+             "url": "https://www.skysports.com/football/news/123/predictions", "headline": "Jones Knows"},
+            {"fixture_id": "11", "outlet": "BBC Sport", "author": "Chris Sutton", "home_goals": 1, "away_goals": 1,
+             "url": "https://www.bbc.co.uk/sport/football/articles/x", "headline": "AI 접근 차단 매체"},  # 허용 목록 밖 → 버림
             {"fixture_id": "11", "outlet": "Fake", "author": "Nobody", "home_goals": 0, "away_goals": 0,
              "url": "https://example.com/made-up", "headline": "not allowed"},       # 허용 매체 아님 → 버림
-            {"fixture_id": "99", "outlet": "BBC Sport", "author": "X", "home_goals": 1, "away_goals": 1,
-             "url": "https://www.bbc.co.uk/a", "headline": "other match"},           # 모르는 경기 → 버림
+            {"fixture_id": "99", "outlet": "Sky Sports", "author": "X", "home_goals": 1, "away_goals": 1,
+             "url": "https://www.skysports.com/a", "headline": "other match"},       # 모르는 경기 → 버림
         ]})
         client, msgs = fake_client([
             response("pause_turn", [block(type="text", text="searching...")]),
@@ -63,13 +65,14 @@ class CollectorTest(unittest.TestCase):
         c = MediaCollector(client=client)
         out = c.collect(FIXTURES)
         self.assertEqual(len(out), 1)
-        self.assertEqual((out[0]["author"], out[0]["home_goals"], out[0]["away_goals"]), ("Chris Sutton", 2, 1))
+        self.assertEqual((out[0]["author"], out[0]["home_goals"], out[0]["away_goals"]), ("Lewis Jones", 2, 1))
         self.assertEqual(len(msgs.calls), 2)
         first = msgs.calls[0]
         self.assertEqual(first["model"], "claude-opus-5-5")
         self.assertEqual(first["fallbacks"], "default")
         self.assertEqual(first["tools"][0]["type"], "web_search_20260209")
-        self.assertIn("bbc.co.uk", first["tools"][0]["allowed_domains"])
+        self.assertIn("skysports.com", first["tools"][0]["allowed_domains"])
+        self.assertNotIn("bbc.co.uk", first["tools"][0]["allowed_domains"])  # AI 접근 차단 매체는 넣지 않음
         self.assertEqual(first["tools"][1]["input_schema"]["properties"]["predictions"]["items"]
                          ["properties"]["fixture_id"]["enum"], ["11"])
         self.assertEqual(msgs.calls[1]["messages"][-1]["role"], "assistant")  # 멈춘 지점부터 이어서
