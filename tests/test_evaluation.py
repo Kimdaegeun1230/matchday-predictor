@@ -12,29 +12,39 @@ def p(mid, md, pred, actual, mode=None, media=None, probs=(0.5, 0.3, 0.2)):
             "media": media or {}}
 
 
+def oc(s):
+    h, a = map(int, s.split("-"))
+    return "H" if h > a else "D" if h == a else "A"
+
+
 class ScoreVarietyTest(unittest.TestCase):
-    def test_strong_favourite_gets_big_score(self):
-        s = summarize(score_matrix(2.8, 0.7, -0.1, 10))
-        h, a = map(int, s["predicted_score"].split("-"))
-        self.assertGreaterEqual(h, 3)            # 최빈 스코어는 2-0 이지만 대표 스코어는 3골 이상
-        self.assertGreater(h, a)
-        self.assertEqual(s["mode_score"], "2-0")
+    def test_same_match_always_same_score(self):
+        mat = score_matrix(1.7, 1.0, -0.1, 10)
+        self.assertEqual(summarize(mat, seed=12345)["predicted_score"], summarize(mat, seed=12345)["predicted_score"])
+
+    def test_score_agrees_with_outcome_and_varies(self):
+        mat = score_matrix(2.2, 0.8, -0.1, 10)  # 홈 강세
+        scores = Counter(summarize(mat, seed=s)["predicted_score"] for s in range(400))
+        self.assertTrue(all(oc(s) == "H" for s in scores))
+        self.assertLessEqual(len(scores), 5)            # 상위 5개 안에서만
+        self.assertGreaterEqual(len(scores), 4)
+        self.assertLess(scores.most_common(1)[0][1] / 400, 0.4)  # 한 스코어로 몰리지 않음
+        self.assertIn("1-0", scores)
+        self.assertTrue(any(int(s[0]) >= 3 for s in scores))   # 3골 이상도 나옴
+        self.assertEqual(summarize(mat)["mode_score"], "2-0")
 
     def test_close_match_predicts_draw(self):
         self.assertEqual(predicted_outcome(0.36, 0.30, 0.34), "D")
         self.assertEqual(predicted_outcome(0.45, 0.27, 0.28), "H")
-        low = summarize(score_matrix(0.9, 0.85, -0.1, 10))
-        high = summarize(score_matrix(1.5, 1.45, -0.1, 10))  # 팽팽하면서 2.5골 초과 확률 50% 이상
-        self.assertIn(low["predicted_score"], ("0-0", "1-1"))
-        self.assertEqual(high["predicted_score"], "2-2")
+        draws = Counter(summarize(score_matrix(1.2, 1.15, -0.1, 10), seed=s)["predicted_score"] for s in range(200))
+        self.assertTrue(all(oc(s) == "D" for s in draws))
+        self.assertGreaterEqual(len(draws), 3)          # 0-0, 1-1, 2-2 …
 
-    def test_range_of_scores_across_strengths(self):
-        scores = Counter(summarize(score_matrix(l, m, -0.1, 10))["predicted_score"]
-                         for l in (0.6, 0.9, 1.2, 1.5, 1.8, 2.1, 2.5, 3.0)
-                         for m in (0.5, 0.8, 1.1, 1.4, 1.8, 2.2))
-        self.assertGreaterEqual(len(scores), 8)
-        self.assertTrue(any(max(map(int, s.split("-"))) >= 3 for s in scores))
-        self.assertTrue(any(s[0] == s[2] for s in scores))  # 무승부 스코어도 나옴
+    def test_pool_one_is_mode(self):
+        from football_predictor.config import ModelConfig
+        mat = score_matrix(2.2, 0.8, -0.1, 10)
+        s = summarize(mat, ModelConfig(score_pool=1), seed=7)
+        self.assertEqual(s["predicted_score"], s["mode_score"])
 
 
 class RoundAccuracyTest(unittest.TestCase):

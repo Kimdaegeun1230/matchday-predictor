@@ -70,6 +70,7 @@ class ModelConfig:
     dixon_coles_rho: float = -0.10    # 저득점(0-0, 1-0, 0-1, 1-1) 보정 계수
     draw_gap: float = 0.10            # 홈승·원정승 확률 차이가 이보다 작고
     draw_min: float = 0.25            # 무승부 확률이 이 이상이면 무승부로 예측
+    score_pool: int = 5               # 대표 스코어: 예측 결과 안 상위 N개 스코어 중 확률대로 하나 (1 = 항상 최빈)
     max_goals: int = 10
 
 

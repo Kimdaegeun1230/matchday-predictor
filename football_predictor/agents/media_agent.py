@@ -59,7 +59,7 @@ class MediaConsensusAgent(Agent):
 
             mat, min_games = ctx.score_matrices[p.match_id]
             new = self._rescale(mat, model_probs, final)
-            s2 = summarize(new)
+            s2 = summarize(new, seed=p.match_id)
             for k, v in s2.items():
                 setattr(p, k, v)
             p.confidence = confidence(max(s2["home_win"], s2["draw"], s2["away_win"]), min_games)

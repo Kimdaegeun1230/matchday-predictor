@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+import zlib
 
 from ..config import MODEL, ModelConfig
 from ..models import Prediction, SquadReport, TeamStrength
@@ -45,28 +46,27 @@ def predicted_outcome(home_win: float, draw: float, away_win: float, cfg: ModelC
     return max((home_win, "H"), (draw, "D"), (away_win, "A"))[1]
 
 
-def predicted_score(mat: list[list[float]], outcome: str, over_2_5: float) -> str:
-    """대표 스코어: 그 결과가 났을 때의 평균 득점(조건부 기대값)을 반올림.
-    - 승/패: 예) 강팀 홈승이면 홈 3.2골·원정 0.8골 → 3-1. 전력 차이와 득점력이 스코어에 드러난다.
-    - 무승부: 고득점 경기(2.5골 초과 확률 50% 이상)면 2-2, 아니면 0-0 / 1-1 중 확률이 높은 쪽."""
+def predicted_score(mat: list[list[float]], outcome: str, seed: int, pool: int = 5) -> str:
+    """대표 스코어: 예측 결과 안에서 확률이 높은 스코어 상위 `pool`개 중 하나를 확률에 비례해 고른다.
+    경기 id 로 고정한 의사 난수를 쓰므로 같은 경기는 항상 같은 스코어가 나온다.
+
+    왜 이렇게 하나: 확률 1위 스코어만 고르면 모든 경기가 1-1·1-0·2-1 로 몰리고(실제 분포와 차이 0.52),
+    평균 득점을 반올림하면 2-0·3-1 로 몰린다(0.43). 확률대로 고르면 1-0, 0-0, 3-0, 3-1, 2-2 등이
+    실제와 비슷한 비율로 나온다(0.24). 대신 정확한 스코어 적중 기대치는 11.4% → 8.8% 로 조금 낮아진다.
+    승·무·패 판단은 바뀌지 않는다."""
     n = len(mat)
-    if outcome == "D":
-        if over_2_5 >= 0.5:
-            return "2-2"
-        return "0-0" if mat[0][0] > mat[1][1] else "1-1"
-    sel = [(mat[i][j], i, j) for i in range(n) for j in range(n) if _in(outcome, i, j)]
-    total = sum(p for p, _, _ in sel)
-    # 0.6 이상에서 올림: 0.5 반올림은 3-1 이 지나치게 많아져(시즌 예측의 24%) 평균 총득점이 실제보다 높아짐
-    h = int(sum(p * i for p, i, _ in sel) / total + 0.4)
-    a = int(sum(p * j for p, _, j in sel) / total + 0.4)
-    if outcome == "H" and h <= a:
-        h = a + 1
-    if outcome == "A" and a <= h:
-        a = h + 1
-    return f"{h}-{a}"
+    cands = sorted(((mat[i][j], i, j) for i in range(n) for j in range(n) if _in(outcome, i, j)), reverse=True)[:pool]
+    total = sum(p for p, _, _ in cands)
+    u = (zlib.crc32(str(seed).encode()) % 10_000) / 10_000 * total
+    acc = 0.0
+    for p, i, j in sorted(cands, key=lambda c: (c[1] + c[2], -c[0])):
+        acc += p
+        if acc >= u:
+            return f"{i}-{j}"
+    return f"{cands[0][1]}-{cands[0][2]}"
 
 
-def summarize(mat: list[list[float]], cfg: ModelConfig = MODEL) -> dict:
+def summarize(mat: list[list[float]], cfg: ModelConfig = MODEL, seed: int = 0) -> dict:
     """스코어 확률표 → 승무패·오버·양팀득점 확률, 대표 스코어, 최빈 스코어, 상위 스코어, 0~5골 확률표."""
     n = len(mat) - 1
     cells = [(mat[i][j], i, j) for i in range(n + 1) for j in range(n + 1)]
@@ -78,7 +78,7 @@ def summarize(mat: list[list[float]], cfg: ModelConfig = MODEL) -> dict:
     # 비교용: 그 결과 안에서 확률이 가장 높은 단일 스코어 (1-0, 2-1 같은 저득점에 몰림)
     _, mh, ma = max(c for c in cells if _in(outcome, c[1], c[2]))
     return {
-        "predicted_score": predicted_score(mat, outcome, over),
+        "predicted_score": predicted_score(mat, outcome, seed, cfg.score_pool),
         "mode_score": f"{mh}-{ma}",
         "home_win": round(home_win, 4),
         "draw": round(draw, 4),
@@ -127,7 +127,7 @@ class PredictionAgent(Agent):
         for m in ctx.fixtures:
             lam, mu = self.expected_goals(ctx, m.home.id, m.away.id)
             mat = score_matrix(lam, mu, self.cfg.dixon_coles_rho, n)
-            s = summarize(mat)
+            s = summarize(mat, self.cfg, seed=m.id)
 
             hs = ctx.team_strengths.get(m.home.id, TeamStrength(m.home.id))
             as_ = ctx.team_strengths.get(m.away.id, TeamStrength(m.away.id))
