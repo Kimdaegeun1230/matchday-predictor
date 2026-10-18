@@ -214,7 +214,15 @@
   .coord p { margin: 2px 0 0; font-size: 13px; opacity: .75; }
   .coord .stat { margin-left: auto; text-align: right; font-size: 12px; opacity: .8; white-space: nowrap; }
   .coord .stat b { display: block; font-size: 18px; opacity: 1; }
-  .pipe { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-top: 10px; position: relative; }
+  .panel.media { grid-column: 1 / -1; }
+  .mws { display: grid; gap: 8px; margin-bottom: 12px; max-width: 560px; }
+  .mw { display: grid; grid-template-columns: 72px 1fr auto; gap: 10px; align-items: center; font-size: 12px; }
+  .mw .bar { height: 6px; }
+  .mw-l { color: var(--ink-2); }
+  .mw-n { color: var(--ink-2); white-space: nowrap; }
+  .panel.media .row a { color: var(--home); text-decoration: none; margin-left: 10px; font-size: 12px; }
+  .panel.media .row a:hover { text-decoration: underline; }
+  .pipe { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; margin-top: 10px; position: relative; }
   .lv { width: 16px; height: 16px; border-radius: 50%; color: #fff; font-size: 10px; font-weight: 700; display: inline-grid; place-items: center; margin-right: 6px; flex: none; vertical-align: -3px; }
   .notice { display: flex; gap: 10px; align-items: flex-start; background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--warn); border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; font-size: 13px; color: var(--ink-2); }
   .notice.bad { border-left-color: var(--bad); }
@@ -544,7 +552,7 @@ function renderList(r) {
 
 function row(p) {
   const [cc, cl] = CONF[p.confidence] || CONF.low;
-  let sub = "예상";
+  let sub = p.media && p.media.count ? `예상 · 매체 ${p.media.count}` : "예상";
   let subCls = "";
   if (p.actual_score) {
     const hit = outcome(p.actual_score) === outcome(p.predicted_score);
@@ -583,12 +591,44 @@ function renderDetail(p) {
       <div class="panel heatbox">${heatmap(p)}</div>
       <div class="panel">${squad(p.home_team, p.home_squad, "var(--home)")}</div>
       <div class="panel">${squad(p.away_team, p.away_squad, "var(--away)")}</div>
+      ${mediaPanel(p)}
     </div>`;
   $("backBtn").onclick = (e) => {
     e.preventDefault();
     history.pushState(null, "", location.pathname);
     showView("matches");
   };
+}
+
+function miniWdl(label, pr, note) {
+  const q = { home_win: pr.H, draw: pr.D, away_win: pr.A };
+  return `<div class="mw"><span class="mw-l">${label}</span>${wdlBar(q)}
+    <span class="mw-n num">${pct(pr.H)} · ${pct(pr.D)} · ${pct(pr.A)}${note ? ` <span class="muted">${note}</span>` : ""}</span></div>`;
+}
+
+function mediaPanel(p) {
+  const m = p.media;
+  if (!m || !m.count) {
+    if (!state.report?.media?.available) return "";
+    return `<div class="panel media"><h4>현지 매체 예측</h4><p class="muted">이 경기에 대해 수집된 영국 매체 예측이 아직 없습니다.</p></div>`;
+  }
+  const final = { H: p.home_win, D: p.draw, A: p.away_win };
+  const rows = m.items.map(it => `<div class="row">
+      <span><b>${esc(it.outlet)}</b> · ${esc(it.author)}
+        <span class="reason">${it.games ? `적중률 ${pct(it.hit_rate)} (${it.games}경기 기준)` : "적중 기록 없음 (기본 가중치)"} · 가중치 ${it.weight.toFixed(2)}</span></span>
+      <span class="r"><b class="num">${esc(it.score.replace("-", " : "))}</b>
+        <a href="${esc(it.url)}" target="_blank" rel="noopener noreferrer" title="${esc(it.headline)}">기사 ↗</a></span>
+    </div>`).join("");
+  return `<div class="panel media">
+    <h4>현지 매체 예측 ${m.count}건 · 예측에 ${pct(m.blend)} 반영</h4>
+    <div class="mws">
+      ${miniWdl("모델만", m.model_only)}
+      ${miniWdl("매체 합의", m.consensus, "적중률 가중")}
+      ${miniWdl("최종", final)}
+    </div>
+    <div class="squad">${rows}</div>
+    <p class="muted" style="font-size:11px;margin:8px 0 0">홈승 · 무 · 원정승 순. 기사 내용은 저장하지 않고 예측 스코어와 링크만 모읍니다.</p>
+  </div>`;
 }
 
 function hero(p) {
@@ -739,6 +779,7 @@ const AGENTS = {
   team_analyst: ["팀 분석", "시간 가중·상대 보정으로 홈/원정 공격력·수비력과 최근 폼 추정"],
   player_analyst: ["선수 분석", "득점·도움 기여도와 출전 확률로 공격·수비 보정 계수 산출"],
   predictor: ["스코어 예측", "Dixon-Coles 포아송 모델로 스코어 분포와 승무패 확률 계산"],
+  media_consensus: ["매체 합의", "영국 현지 매체 예측을 칼럼니스트 적중률로 가중해 승무패 확률에 일부 반영"],
   reporter: ["리포트 발행", "결과를 JSON으로 저장해 웹·외부에서 사용"],
 };
 const PARAMS = {
@@ -781,6 +822,7 @@ function renderAgents(r) {
       ${sourcesPanel(r)}
       ${qualityPanel(r)}
     </div>
+    ${leaderboardPanel(r)}
     <div class="grid2">
       <div class="panel">
         <div class="panel-h"><h3>이번 분석에 사용된 데이터</h3></div>
@@ -821,6 +863,24 @@ function sourcesPanel(r) {
     </div>`;
   }).join("");
   return `<div class="panel"><div class="panel-h"><h3>데이터 출처</h3><p>우선순위: 위 → 아래</p></div>${items}</div>`;
+}
+
+function leaderboardPanel(r) {
+  const md = r.media;
+  if (!md || !md.available) return "";
+  const rows = (md.leaderboard || []).map((d, i) => `<tr>
+      <td class="num">${i + 1}</td><td class="l">${esc(d.author)}</td><td class="l">${esc(d.outlet)}</td>
+      <td class="num">${d.games}</td><td class="num">${d.outcome_hits}</td><td class="num">${d.exact_hits}</td>
+      <td class="num">${d.raw_hit_rate != null ? pct(d.raw_hit_rate) : "-"}</td>
+      <td class="num"><b>${pct(d.hit_rate)}</b></td><td class="num">${d.weight.toFixed(2)}</td></tr>`).join("");
+  return `<div class="panel" style="margin-top:16px">
+    <div class="panel-h"><h3>현지 매체 적중률</h3>
+      <p>수집 예측 ${md.predictions}건 · 칼럼니스트 ${md.pundits}명 · 보정 적중률 = 기록이 적으면 50%로 당긴 값</p></div>
+    ${rows ? `<div class="tablewrap"><table><thead><tr><th>#</th><th class="l">칼럼니스트</th><th class="l">매체</th>
+      <th>경기</th><th>결과 적중</th><th>스코어 적중</th><th>실제 적중률</th><th>보정 적중률</th><th>가중치</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>`
+      : `<div class="src-item"><p class="muted">아직 결과가 나온 경기가 없어 적중률을 계산하지 못했습니다. 경기가 끝나면 자동으로 쌓입니다.</p></div>`}
+  </div>`;
 }
 
 function qualityPanel(r) {

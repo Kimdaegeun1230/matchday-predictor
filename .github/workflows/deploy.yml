@@ -2,7 +2,8 @@
 # API 사용량: football-data.org 는 실행당 약 5회(분당 10회 한도 안), API-Football 은 실행당 1~2회(하루 100회 한도 안).
 # 필요한 설정 (저장소 Settings):
 #   Secrets and variables → Actions → Repository secrets :
-#     FOOTBALL_DATA_API_KEY (또는 FOOTBALLDATAAPIKEY), API_FOOTBALL_KEY (또는 APIFOOTBALLKEY)
+#     FOOTBALL_DATA_API_KEY (또는 FOOTBALLDATAAPIKEY), API_FOOTBALL_KEY (또는 APIFOOTBALLKEY),
+#     ANTHROPIC_API_KEY (또는 ANTHROPICAPIKEY) — 현지 매체 예측 수집용, 없으면 그 단계만 건너뜀
 #   Secrets and variables → Actions → Variables: SITE_DOMAIN (예: matchdaypredictor.com, 없으면 생략)
 #   Pages → Build and deployment → Source: GitHub Actions
 name: Build and deploy
@@ -26,6 +27,10 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Secret 이름은 밑줄 있는 것(FOOTBALL_DATA_API_KEY)과 없는 것(FOOTBALLDATAAPIKEY) 둘 다 인식
+    env:
+      FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY || secrets.FOOTBALLDATAAPIKEY }}
+      API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY || secrets.APIFOOTBALLKEY }}
     steps:
       - uses: actions/checkout@v7
 
@@ -33,23 +38,31 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
       - name: Run tests
         run: python -m unittest discover -s tests -t .
 
-      # Secret 이름은 밑줄 있는 것(FOOTBALL_DATA_API_KEY)과 없는 것(FOOTBALLDATAAPIKEY) 둘 다 인식
+      - id: pages
+        uses: actions/configure-pages@v6
+
       - name: Check data sources
-        env:
-          FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY || secrets.FOOTBALLDATAAPIKEY }}
-          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY || secrets.APIFOOTBALLKEY }}
         run: python main.py check-sources
 
-      - name: Build static site
-        env:
-          FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY || secrets.FOOTBALLDATAAPIKEY }}
-          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY || secrets.APIFOOTBALLKEY }}
-        run: python main.py build --out site --domain "${{ vars.SITE_DOMAIN }}"
+      # 지난 배포에 올려 둔 매체 예측 기록을 받아 이어서 쌓는다 (칼럼니스트 적중률 유지)
+      - name: Restore media history
+        run: python main.py media-restore --from "${{ steps.pages.outputs.base_url }}"
 
-      - uses: actions/configure-pages@v6
+      # 수집할 때가 된 경기만 Claude 로 조사 (실행당 최대 3회 호출, 키가 없으면 건너뜀)
+      - name: Collect UK media predictions
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY || secrets.ANTHROPICAPIKEY }}
+        run: python main.py collect-media
+        continue-on-error: true
+
+      - name: Build static site
+        run: python main.py build --out site --domain "${{ vars.SITE_DOMAIN }}"
 
       - uses: actions/upload-pages-artifact@v5
         with:

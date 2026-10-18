@@ -108,6 +108,7 @@ class Prediction:
     away_squad: dict = field(default_factory=dict)
     sources: list[str] = field(default_factory=list)
     confirmed_by: list[str] = field(default_factory=list)
+    media: dict = field(default_factory=dict)  # 현지 매체 예측과 반영 내용 (MediaConsensusAgent)
     notes: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:

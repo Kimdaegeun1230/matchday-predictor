@@ -44,6 +44,10 @@ class MatchContext:
 
     # PredictionAgent
     predictions: list[Prediction] = field(default_factory=list)
+    score_matrices: dict[int, tuple] = field(default_factory=dict)  # match_id → (스코어 확률표, 최소 경기 수)
+
+    # MediaConsensusAgent
+    media_report: dict = field(default_factory=dict)
 
     # 실행 기록
     log: list[dict[str, Any]] = field(default_factory=list)

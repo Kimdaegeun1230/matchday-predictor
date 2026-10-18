@@ -78,4 +78,32 @@ FOOTBALL_DATA_BASE_URL = "https://api.football-data.org/v4"
 API_FOOTBALL_KEY = os.environ.get("API_FOOTBALL_KEY", "").strip()
 API_FOOTBALL_BASE_URL = "https://v3.football.api-sports.io"
 OPENFOOTBALL_URL = "https://raw.githubusercontent.com/openfootball/football.json/master/{season}/{code}.json"
+
+# 현지 매체 예측 수집 (Claude + 웹 검색)
+MEDIA_FILE = DATA_DIR / "media" / "media.json"
+MEDIA_MODEL = os.environ.get("MEDIA_MODEL", "claude-opus-5-5")
+MEDIA_EFFORT = os.environ.get("MEDIA_EFFORT", "medium")
+# 영국 현지 매체 (검색 허용 도메인)
+MEDIA_DOMAINS = [
+    "bbc.co.uk", "bbc.com", "skysports.com", "theguardian.com", "telegraph.co.uk", "thetimes.com",
+    "thetimes.co.uk", "independent.co.uk", "dailymail.co.uk", "mirror.co.uk", "standard.co.uk",
+    "talksport.com", "thesun.co.uk", "express.co.uk", "football.london", "manchestereveningnews.co.uk",
+    "liverpoolecho.co.uk", "nytimes.com",
+]
+
+
+@dataclass(frozen=True)
+class MediaConfig:
+    max_calls_per_run: int = 3        # 한 번 실행에 Claude 호출 상한 (비용 제한)
+    max_searches_per_call: int = 12   # 호출 한 번당 웹 검색 상한
+    lookahead_hours: int = 72         # 이만큼 남은 경기부터 수집
+    refresh_hours: int = 24           # 이 시간이 지나면 킥오프 전 한 번 더 수집
+    backfill_days: int = 21           # 적중률 계산용으로 지난 경기도 수집하는 기간
+    max_blend: float = 0.30           # 매체 합의가 승무패 확률에 반영되는 최대 비율
+    blend_half_weight: float = 3.0    # 가중치 합이 이 값일 때 최대 비율의 절반 반영
+    prior_hit_rate: float = 0.5       # 적중률 사전값 (기록 적은 칼럼니스트)
+    prior_games: float = 6.0          # 사전값 강도 (가상의 경기 수)
+
+
+MEDIA = MediaConfig()
 CACHE_TTL_SECONDS = int(os.environ.get("CACHE_TTL_SECONDS", "3600"))

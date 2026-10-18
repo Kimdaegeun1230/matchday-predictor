@@ -34,7 +34,7 @@ class PipelineTest(unittest.TestCase):
                 self.assertGreaterEqual(min(h, a), 0)
             agents = [entry["agent"] for entry in report["agent_log"]]
             self.assertEqual(agents, ["data_collector", "data_quality", "team_analyst", "player_analyst",
-                                      "predictor", "reporter"])
+                                      "predictor", "media_consensus", "reporter"])
 
     def test_strong_team_rated_above_weak_team(self):
         ctx = MatchContext(league=get_league("EPL"), target_date=date(2027, 2, 1))

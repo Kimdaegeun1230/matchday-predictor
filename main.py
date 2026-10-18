@@ -28,6 +28,28 @@ def print_report(report: dict) -> None:
               f"H {p['home_win']:.0%} D {p['draw']:.0%} A {p['away_win']:.0%} | 신뢰도 {p['confidence']}")
 
 
+def media_restore(site_url: str) -> int:
+    """GitHub Actions 는 매번 빈 상태로 시작하므로, 지난 배포에 올려 둔 매체 예측 기록을 받아 이어서 쌓는다."""
+    import json
+    import urllib.error
+    import urllib.request
+    from football_predictor.config import MEDIA_FILE
+    if MEDIA_FILE.exists():
+        print("매체 기록이 이미 있어 내려받지 않음")
+        return 0
+    url = site_url.rstrip("/") + "/data/media.json"
+    try:
+        with urllib.request.urlopen(url, timeout=30) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except (urllib.error.URLError, ValueError, TimeoutError) as exc:
+        print(f"매체 기록 없음 (처음 실행이면 정상): {exc}")
+        return 0
+    MEDIA_FILE.parent.mkdir(parents=True, exist_ok=True)
+    MEDIA_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    print(f"매체 기록 복원: 예측 {len(data.get('predictions', []))}건")
+    return 0
+
+
 def check_sources() -> int:
     coordinator = CoordinatorAgent(write_files=False)
     for key in LEAGUES:
@@ -68,6 +90,12 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("check-sources", help="데이터 출처별 연결 상태와 병합 결과 점검")
 
+    m = sub.add_parser("collect-media", help="영국 현지 매체 예측 수집 (Claude, ANTHROPIC_API_KEY 필요)")
+    m.add_argument("--max-calls", type=int, default=None, help="이번 실행의 Claude 호출 상한")
+
+    r = sub.add_parser("media-restore", help="배포된 사이트에서 매체 예측 기록을 내려받기 (없을 때만)")
+    r.add_argument("--from", dest="site_url", required=True, help="사이트 주소 (예: https://아이디.github.io/저장소/)")
+
     b = sub.add_parser("build", help="정적 사이트 빌드 (GitHub Pages 등에 그대로 올림)")
     b.add_argument("--out", default="site", help="출력 폴더 (기본: site)")
     b.add_argument("--domain", default="", help="커스텀 도메인 (CNAME 파일 생성, 예: matchdaypredictor.com)")
@@ -89,6 +117,22 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "check-sources":
         return check_sources()
+
+    if args.cmd == "collect-media":
+        coordinator = CoordinatorAgent(write_files=False)
+        for key in LEAGUES:
+            r = coordinator.collect_media(key, max_calls=args.max_calls)
+            if r.get("skipped"):
+                print(f"{key}: 매체 수집 건너뜀 — {r['skipped']}")
+            else:
+                u = r.get("usage", {})
+                print(f"{key}: Claude 호출 {r['calls']}회, 대상 {r.get('matches', 0)}경기, 예측 {r['found']}건"
+                      + (f" (입력 {u.get('input_tokens', 0):,} / 출력 {u.get('output_tokens', 0):,} 토큰,"
+                         f" 웹 검색 {u.get('web_searches', 0)}회)" if u else ""))
+        return 0
+
+    if args.cmd == "media-restore":
+        return media_restore(args.site_url)
 
     if args.cmd == "build":
         from pathlib import Path

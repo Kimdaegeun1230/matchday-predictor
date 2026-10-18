@@ -32,6 +32,22 @@ python main.py check-sources
 
 출처별로 응답 여부, 가져온 팀·경기·결과·선수·부상 수, 무료 등급에서 막힌 항목, 출처 간 스코어 불일치를 보여준다.
 
+## 영국 현지 매체 예측 반영 (`media/`, `agents/media_agent.py`)
+
+1. **수집** (`python main.py collect-media`): Claude(`claude-opus-5-5`)가 웹 검색으로 영국 매체(BBC Sport, Sky Sports,
+   Guardian, Telegraph, Times, Independent, Mail, Mirror, Standard, talkSPORT 등 허용 도메인만)를 찾아
+   칼럼니스트별 스코어 예측을 `record_predictions` 도구로 돌려준다. 기사 본문은 저장하지 않고 매체·작성자·스코어·링크·제목만 남긴다.
+   - 대상: 72시간 안에 시작하는 경기(킥오프 하루 전 한 번 더), 적중률 계산용으로 최근 3주 안에 끝난 경기
+   - 같은 날짜 경기는 한 번의 호출로 묶고, 실행당 최대 3회 호출 (`config.py` 의 `MediaConfig`)
+   - 안전 분류기가 요청을 거절하면 다른 모델로 자동 재시도하도록 `fallbacks: "default"` 를 켜 두었다
+2. **적중률**: 끝난 경기와 비교해 칼럼니스트별 결과(승/무/패) 적중률을 계산한다. 기록이 적으면 50% 쪽으로 당긴다
+   (6경기 분량의 사전값). 가중치 = (보정 적중률 / 50%)²
+3. **반영** (MediaConsensusAgent): 경기마다 매체 예측을 가중 투표해 승/무/패 합의를 만들고,
+   `최대 30% × 가중치합 / (가중치합 + 3)` 만큼 모델 확률에 섞는다. 스코어 확률표도 새 확률에 맞춰 다시 계산한다.
+4. **기록 유지**: 배포할 때 `data/media.json` 을 함께 올리고, 다음 실행이 `media-restore` 로 받아 이어서 쌓는다.
+
+키 설정: `.env` 와 GitHub Secrets 에 `ANTHROPIC_API_KEY` (또는 `ANTHROPICAPIKEY`). 키가 없으면 이 기능만 꺼지고 나머지는 그대로 동작한다.
+
 ## 출처를 합치는 규칙 (`providers/multi.py`)
 
 - **같은 경기**: 같은 시즌의 (홈, 원정) 조합은 한 번뿐이므로 이를 키로 묶는다. 연기돼 날짜가 달라도 같은 경기로 본다.
@@ -49,6 +65,7 @@ CoordinatorAgent (총괄: 순서대로 실행, 결과 캐시, 다음 경기일 �
  ├─ TeamAnalystAgent     홈/원정 공격력·수비력(상대 보정 + 시간 가중), 최근 폼, 승격팀 사전값
  ├─ PlayerAnalystAgent   득점·도움 기여도 × (1 - 출전 확률) → 공격·수비 보정 계수
  ├─ PredictionAgent      Dixon-Coles 포아송 → 기대득점, 예상 스코어, 승무패·오버·BTTS 확률
+ ├─ MediaConsensusAgent  영국 매체 예측을 칼럼니스트 적중률로 가중해 승무패 확률에 일부 반영
  └─ ReportAgent          JSON 리포트 발행 (output/) → 웹/외부에서 사용
 ```
 

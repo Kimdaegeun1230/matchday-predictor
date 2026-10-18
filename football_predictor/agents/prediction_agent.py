@@ -33,6 +33,39 @@ def score_matrix(lam: float, mu: float, rho: float, max_goals: int) -> list[list
     return [[v / total for v in row] for row in mat]
 
 
+def summarize(mat: list[list[float]]) -> dict:
+    """스코어 확률표 → 승무패·오버·양팀득점 확률, 대표 스코어, 상위 스코어, 0~5골 확률표."""
+    n = len(mat) - 1
+    cells = [(mat[i][j], i, j) for i in range(n + 1) for j in range(n + 1)]
+    home_win = sum(p for p, i, j in cells if i > j)
+    draw = sum(p for p, i, j in cells if i == j)
+    away_win = sum(p for p, i, j in cells if i < j)
+    # 가장 가능성 높은 결과(승/무/패) 안에서 최빈 스코어를 대표 예측으로 사용
+    best = max((home_win, "H"), (draw, "D"), (away_win, "A"))[1]
+    in_outcome = [c for c in cells if (c[1] > c[2], c[1] == c[2], c[1] < c[2])["HDA".index(best)]]
+    _, ph, pa = max(in_outcome)
+    return {
+        "predicted_score": f"{ph}-{pa}",
+        "home_win": round(home_win, 4),
+        "draw": round(draw, 4),
+        "away_win": round(away_win, 4),
+        "over_2_5": round(sum(p for p, i, j in cells if i + j > 2), 4),
+        "btts": round(sum(p for p, i, j in cells if i > 0 and j > 0), 4),
+        "top_scores": [{"score": f"{i}-{j}", "prob": round(p, 4)} for p, i, j in sorted(cells, reverse=True)[:5]],
+        "score_grid": [[round(mat[i][j], 4) for j in range(6)] for i in range(6)],
+    }
+
+
+def confidence(top_prob: float, min_games: int) -> str:
+    if min_games < 4:
+        return "low"
+    if top_prob >= 0.6:
+        return "high"
+    if top_prob >= 0.45:
+        return "medium"
+    return "low"
+
+
 class PredictionAgent(Agent):
     name = "predictor"
     role = "기대득점/스코어/승무패 확률 예측"
@@ -60,23 +93,13 @@ class PredictionAgent(Agent):
         for m in ctx.fixtures:
             lam, mu = self.expected_goals(ctx, m.home.id, m.away.id)
             mat = score_matrix(lam, mu, self.cfg.dixon_coles_rho, n)
-
-            cells = [(mat[i][j], i, j) for i in range(n + 1) for j in range(n + 1)]
-            home_win = sum(p for p, i, j in cells if i > j)
-            draw = sum(p for p, i, j in cells if i == j)
-            away_win = sum(p for p, i, j in cells if i < j)
-            over25 = sum(p for p, i, j in cells if i + j > 2)
-            btts = sum(p for p, i, j in cells if i > 0 and j > 0)
-
-            # 가장 가능성 높은 결과(승/무/패) 안에서 최빈 스코어를 대표 예측으로 사용
-            outcome = max((home_win, "H"), (draw, "D"), (away_win, "A"))[1]
-            in_outcome = [c for c in cells if (c[1] > c[2], c[1] == c[2], c[1] < c[2])["HDA".index(outcome)]]
-            _, ph, pa = max(in_outcome)
-            top = sorted(cells, reverse=True)[:5]
+            s = summarize(mat)
 
             hs = ctx.team_strengths.get(m.home.id, TeamStrength(m.home.id))
             as_ = ctx.team_strengths.get(m.away.id, TeamStrength(m.away.id))
             notes = self._notes(ctx, m.home.id, m.away.id, hs, as_)
+            min_games = min(hs.games, as_.games)
+            ctx.score_matrices[m.id] = (mat, min_games)  # 매체 합의 에이전트가 이어서 보정할 때 사용
 
             ctx.predictions.append(Prediction(
                 match_id=m.id,
@@ -91,15 +114,8 @@ class PredictionAgent(Agent):
                 actual_score=f"{m.home_goals}-{m.away_goals}" if m.finished else None,
                 home_xg=round(lam, 2),
                 away_xg=round(mu, 2),
-                predicted_score=f"{ph}-{pa}",
-                home_win=round(home_win, 4),
-                draw=round(draw, 4),
-                away_win=round(away_win, 4),
-                over_2_5=round(over25, 4),
-                btts=round(btts, 4),
-                top_scores=[{"score": f"{i}-{j}", "prob": round(p, 4)} for p, i, j in top],
-                confidence=self._confidence(max(home_win, draw, away_win), min(hs.games, as_.games)),
-                score_grid=[[round(mat[i][j], 4) for j in range(6)] for i in range(6)],
+                **s,
+                confidence=confidence(max(s["home_win"], s["draw"], s["away_win"]), min_games),
                 home_squad=self._squad(ctx, m.home.id),
                 away_squad=self._squad(ctx, m.away.id),
                 sources=m.sources,
@@ -108,15 +124,6 @@ class PredictionAgent(Agent):
             ))
         return f"{len(ctx.predictions)}경기 예측 완료"
 
-    @staticmethod
-    def _confidence(top_prob: float, min_games: int) -> str:
-        if min_games < 4:
-            return "low"
-        if top_prob >= 0.6:
-            return "high"
-        if top_prob >= 0.45:
-            return "medium"
-        return "low"
 
     @staticmethod
     def _squad(ctx: MatchContext, team_id: int) -> dict:

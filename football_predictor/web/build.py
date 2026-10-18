@@ -49,6 +49,10 @@ def build_site(out_dir: Path, source: str = "auto", domain: str | None = None, t
         summary["leagues"][key] = {"dates": len(calendar), "matches": sum(d["matches"] for d in calendar)}
         log.info("%s: 경기일 %d개 빌드", key, len(calendar))
 
+    # 매체 예측 기록도 함께 올려 둔다 → 다음 빌드(GitHub Actions)가 내려받아 이어서 쌓음 (적중률 유지)
+    if coordinator.media_path.exists():
+        shutil.copy(coordinator.media_path, out_dir / "data" / "media.json")
+
     _write(out_dir / "data" / "leagues.json",
            [{"key": l.key, "name": l.name, "country": l.country} for l in LEAGUES.values()])
     _write(out_dir / "data" / "meta.json", summary)

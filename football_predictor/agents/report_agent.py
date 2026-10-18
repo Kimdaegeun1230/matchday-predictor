@@ -51,6 +51,7 @@ def build_report(ctx: MatchContext) -> dict:
         "sources": ctx.source_report.get("sources", []),
         "reconciliation": {k: v for k, v in ctx.source_report.get("reconciliation", {}).items() if k != "conflicts"},
         "data_quality": ctx.data_quality,
+        "media": ctx.media_report,
         "agent_log": ctx.log,
     }
 
