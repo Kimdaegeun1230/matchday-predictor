@@ -29,6 +29,10 @@ Rules:
 the prediction is unsigned.
 - Use the page URL where the prediction appears and its headline.
 - Skip betting tips without a specific scoreline, and skip predictions for other matches.
+- Record human predictions only. Skip AI or statistical-model outputs (e.g. "AI predictor", "supercomputer",
+  data-model win probabilities), because the app already has its own model.
+- Per-match preview pages usually carry the scoreline in a closing "prediction" or "We say:" line \
+(Sports Mole, WhoScored, Squawka, Sporting Life); weekly columns cover many matches at once (Sky Sports "Jones Knows").
 - When you have finished searching, call record_predictions exactly once with everything you found. If you found \
 nothing, call it with an empty list."""
 

@@ -123,6 +123,14 @@ class CoordinatorAgent:
             row["finished"] += int(m.finished)
         return [days[d] for d in sorted(days)]
 
+    def round_accuracy(self, league_key: str, today: date | None = None) -> dict:
+        """시즌 경기일마다 그날 기준 예측을 만들어 실제 결과와 비교한 라운드별 적중률."""
+        from ..evaluation import round_accuracy
+        today = today or date.today()
+        reports = [self.predict(league_key, date.fromisoformat(d["date"]))
+                   for d in self.match_calendar(league_key, today) if d["finished"]]
+        return round_accuracy(reports)
+
     def source_status(self, league_key: str, as_of: date) -> dict:
         """출처별 응답 상태와 병합 결과 (샘플 공급자는 빈 값)."""
         report = getattr(self.provider, "report", None)

@@ -20,6 +20,7 @@ from pathlib import Path
 
 from ..agents.coordinator import CoordinatorAgent
 from ..config import LEAGUES
+from ..evaluation import round_accuracy
 
 STATIC_DIR = Path(__file__).parent / "static"
 STATIC_MARKER = "<!--MP_STATIC-->"
@@ -43,10 +44,15 @@ def build_site(out_dir: Path, source: str = "auto", domain: str | None = None, t
     for key, league in LEAGUES.items():
         calendar = coordinator.match_calendar(key, today)
         _write(out_dir / "data" / key / "calendar.json", calendar)
+        reports = []
         for day in calendar:
             report = coordinator.predict(key, date.fromisoformat(day["date"]))
             _write(out_dir / "data" / key / "predictions" / f"{day['date']}.json", report)
-        summary["leagues"][key] = {"dates": len(calendar), "matches": sum(d["matches"] for d in calendar)}
+            reports.append(report)
+        accuracy = round_accuracy(reports)
+        _write(out_dir / "data" / key / "accuracy.json", accuracy)
+        summary["leagues"][key] = {"dates": len(calendar), "matches": sum(d["matches"] for d in calendar),
+                                   "accuracy": accuracy["season"]}
         log.info("%s: 경기일 %d개 빌드", key, len(calendar))
 
     # 매체 예측 기록도 함께 올려 둔다 → 다음 빌드(GitHub Actions)가 내려받아 이어서 쌓음 (적중률 유지)

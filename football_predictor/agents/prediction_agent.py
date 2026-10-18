@@ -56,6 +56,23 @@ def summarize(mat: list[list[float]]) -> dict:
     }
 
 
+def xg_score(lam: float, mu: float, outcome: str) -> str:
+    """기대득점을 반올림한 스코어를, 확률이 가장 높은 결과(승/무/패)와 어긋나지 않게 맞춘다.
+    최빈 스코어(1-0, 2-1 등 저득점에 몰림)와 달리 전력 차이가 스코어에 드러난다."""
+    h, a = round(lam), round(mu)
+    if outcome == "H" and h <= a:
+        h = a + 1
+    elif outcome == "A" and a <= h:
+        a = h + 1
+    elif outcome == "D" and h != a:
+        h = a = round((lam + mu) / 2)
+    return f"{h}-{a}"
+
+
+def outcome_of(s: dict) -> str:
+    return max((s["home_win"], "H"), (s["draw"], "D"), (s["away_win"], "A"))[1]
+
+
 def confidence(top_prob: float, min_games: int) -> str:
     if min_games < 4:
         return "low"
@@ -115,6 +132,7 @@ class PredictionAgent(Agent):
                 home_xg=round(lam, 2),
                 away_xg=round(mu, 2),
                 **s,
+                xg_score=xg_score(lam, mu, outcome_of(s)),
                 confidence=confidence(max(s["home_win"], s["draw"], s["away_win"]), min_games),
                 home_squad=self._squad(ctx, m.home.id),
                 away_squad=self._squad(ctx, m.away.id),

@@ -47,6 +47,8 @@ def make_handler(coordinator: CoordinatorAgent):
                     self._json(200, [{"key": l.key, "name": l.name, "country": l.country} for l in LEAGUES.values()])
                 elif url.path == "/api/calendar":
                     self._json(200, coordinator.match_calendar(q.get("league", "EPL"), date.today()))
+                elif url.path == "/api/accuracy":
+                    self._json(200, coordinator.round_accuracy(q.get("league", "EPL")))
                 elif url.path == "/api/next-date":
                     nxt = coordinator.next_match_date(q.get("league", "EPL"), date.today())
                     self._json(200, {"date": nxt.isoformat() if nxt else None})

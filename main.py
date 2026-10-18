@@ -28,6 +28,31 @@ def print_report(report: dict) -> None:
               f"H {p['home_win']:.0%} D {p['draw']:.0%} A {p['away_win']:.0%} | 신뢰도 {p['confidence']}")
 
 
+def print_accuracy(acc: dict, latest_only: bool = False) -> int:
+    pct = lambda x: "-" if x is None else f"{x:.0%}"
+    rounds = acc["rounds"]
+    if latest_only:
+        rounds = [r for r in rounds if r["matchday"] == acc["latest_complete_round"]]
+    print(f"{'라운드':>6} {'상태':<6} {'경기':>4} {'결과 적중':>10} {'스코어 적중(최빈)':>16} {'스코어 적중(xG)':>15}")
+    for r in rounds:
+        state = "완료" if r["complete"] else f"{r['finished']}/{r['matches']}"
+        print(f"{r['matchday']:>6} {state:<6} {r['matches']:>4} "
+              f"{r['outcome_hits']:>3}/{r['finished']:<2} {pct(r['outcome_rate']):>4}   "
+              f"{r['exact_hits']:>3}/{r['finished']:<2} {pct(r['exact_rate']):>4}        "
+              f"{r['xg_exact_hits']:>3}/{r['finished']:<2} {pct(r['xg_exact_rate']):>4}")
+        if latest_only:
+            for i in r["items"]:
+                mark = "✓" if i["outcome_hit"] else "✗"
+                exact = " (스코어 적중)" if i["exact_hit"] else ""
+                print(f"    {i['home']} {i['actual']} {i['away']}  예측 {i['predicted']} / xG {i['xg_predicted']}  {mark}{exact}")
+    s = acc["season"]
+    print(f"\n시즌 누적 {s['finished']}경기: 결과 적중 {s['outcome_hits']} ({pct(s['outcome_rate'])}), "
+          f"스코어 적중 최빈 {s['exact_hits']} ({pct(s['exact_rate'])}) / xG {s['xg_exact_hits']} ({pct(s['xg_exact_rate'])})")
+    if s["media_matches"]:
+        print(f"매체 예측이 있던 {s['media_matches']}경기: 모델만 {pct(s['model_only_rate'])} → 매체 반영 후 {pct(s['with_media_rate'])}")
+    return 0
+
+
 def media_restore(site_url: str) -> int:
     """GitHub Actions 는 매번 빈 상태로 시작하므로, 지난 배포에 올려 둔 매체 예측 기록을 받아 이어서 쌓는다."""
     import json
@@ -90,6 +115,9 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("check-sources", help="데이터 출처별 연결 상태와 병합 결과 점검")
 
+    a = sub.add_parser("accuracy", help="라운드별 예측 적중률 (결과 적중 / 스코어 적중)")
+    a.add_argument("--latest", action="store_true", help="가장 최근에 끝난 라운드만")
+
     m = sub.add_parser("collect-media", help="영국 현지 매체 예측 수집 (Claude, ANTHROPIC_API_KEY 필요)")
     m.add_argument("--max-calls", type=int, default=None, help="이번 실행의 Claude 호출 상한")
 
@@ -125,6 +153,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "check-sources":
         return check_sources()
+
+    if args.cmd == "accuracy":
+        return print_accuracy(CoordinatorAgent(write_files=False).round_accuracy("EPL"), args.latest)
 
     if args.cmd == "collect-media":
         coordinator = CoordinatorAgent(write_files=False)

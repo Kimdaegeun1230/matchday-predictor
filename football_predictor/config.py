@@ -87,8 +87,11 @@ MEDIA_EFFORT = os.environ.get("MEDIA_EFFORT", "medium")
 # BBC, Guardian, Telegraph, Times, Independent, Mail, Mirror, Standard, Sun, Express, talkSPORT, Reach 지역지,
 # The Athletic(nytimes.com)은 AI 접근을 막아 두었으므로(2026-10 확인) 넣지 않는다 — 넣으면 웹 검색 요청이 400 으로 실패.
 MEDIA_DOMAINS = [
-    "skysports.com", "fourfourtwo.com", "football365.com", "planetfootball.com", "givemesport.com",
-    "90min.com", "goal.com",
+    # 경기마다 스코어 예측을 내는 영국 매체
+    "sportsmole.co.uk", "whoscored.com", "squawka.com", "skysports.com", "sportinglife.com",
+    # 프리뷰·칼럼에 예측이 실리는 영국 매체
+    "espn.co.uk", "eurosport.co.uk", "fourfourtwo.com", "football365.com", "planetfootball.com",
+    "givemesport.com", "90min.com", "teamtalk.com", "thesportsman.com", "goal.com",
 ]
 
 

@@ -214,6 +214,25 @@
   .coord p { margin: 2px 0 0; font-size: 13px; opacity: .75; }
   .coord .stat { margin-left: auto; text-align: right; font-size: 12px; opacity: .8; white-space: nowrap; }
   .coord .stat b { display: block; font-size: 18px; opacity: 1; }
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px; }
+  .tile { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; box-shadow: var(--shadow); min-width: 0; }
+  .tile .k { font-size: 12px; color: var(--muted); }
+  .tile .v { font-size: 22px; font-weight: 650; margin-top: 2px; white-space: nowrap; }
+  .tile .s { font-size: 12px; color: var(--ink-2); }
+  .acc-note { font-size: 12px; margin: 0 0 12px; }
+  details.round { border-bottom: 1px solid var(--grid); }
+  details.round:last-child { border-bottom: 0; }
+  details.round summary { display: flex; align-items: center; gap: 14px; padding: 12px 16px; cursor: pointer; flex-wrap: wrap; list-style: none; }
+  details.round summary::-webkit-details-marker { display: none; }
+  details.round summary:hover { background: var(--surface-2); }
+  details.round[open] summary { border-bottom: 1px solid var(--grid); }
+  .rd { font-weight: 700; min-width: 34px; }
+  .rdate { font-size: 12px; min-width: 90px; }
+  .rs { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); }
+  .hit { color: var(--good); font-weight: 600; } .miss { color: var(--bad); }
+  .pbar { display: inline-block; width: 80px; height: 6px; background: var(--grid); border-radius: 3px; overflow: hidden; }
+  .pbar span { display: block; height: 100%; border-radius: 3px; }
+  @media (max-width: 900px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
   .panel.media { grid-column: 1 / -1; }
   .mws { display: grid; gap: 8px; margin-bottom: 12px; max-width: 560px; }
   .mw { display: grid; grid-template-columns: 72px 1fr auto; gap: 10px; align-items: center; font-size: 12px; }
@@ -315,6 +334,7 @@
   <nav class="views" role="tablist">
     <button role="tab" data-view="matches" aria-selected="true">경기 예측</button>
     <button role="tab" data-view="teams" aria-selected="false">팀 전력</button>
+    <button role="tab" data-view="accuracy" aria-selected="false">적중률</button>
     <button role="tab" data-view="agents" aria-selected="false">에이전트 구성</button>
   </nav>
 
@@ -331,6 +351,7 @@
   </section>
   <section id="view-detail" hidden></section>
   <section id="view-teams" hidden></section>
+  <section id="view-accuracy" hidden><div class="empty">적중률 계산 중…</div></section>
   <section id="view-agents" hidden></section>
 
   <footer id="foot">예측은 통계 모델 결과이며 실제 결과를 보장하지 않습니다.</footer>
@@ -347,6 +368,7 @@ const STATIC = !!window.MP_STATIC;
 const API = {
   calendar: (l) => STATIC ? `data/${l}/calendar.json` : `/api/calendar?league=${l}`,
   predictions: (l, d) => STATIC ? `data/${l}/predictions/${d}.json` : `/api/predictions?league=${l}&date=${d}`,
+  accuracy: (l) => STATIC ? `data/${l}/accuracy.json` : `/api/accuracy?league=${l}`,
 };
 const state = { report: null, calendar: [], view: "matches", sort: { key: "position", dir: 1 } };
 
@@ -406,8 +428,9 @@ function showView(view) {
   state.view = view;
   document.querySelectorAll("nav.views button").forEach(x =>
     x.setAttribute("aria-selected", x.dataset.view === (view === "detail" ? "matches" : view)));
-  ["matches", "detail", "teams", "agents"].forEach(v => $("view-" + v).hidden = v !== view);
-  $("daynav").hidden = view === "detail";
+  ["matches", "detail", "teams", "accuracy", "agents"].forEach(v => $("view-" + v).hidden = v !== view);
+  $("daynav").hidden = view === "detail" || view === "accuracy";
+  if (view === "accuracy") loadAccuracy();
   if (view !== "detail") try { localStorage.setItem("mp-view", view); } catch (e) {}
 }
 document.querySelector("nav.views").onclick = (e) => {
@@ -667,6 +690,7 @@ function hero(p) {
         ${p.top_scores.map(s => `<span class="chip">${s.score} <b>${pct(s.prob)}</b></span>`).join("")}
         <span class="chip">2.5골 이상 <b>${pct(p.over_2_5)}</b></span>
         <span class="chip">양팀 득점 <b>${pct(p.btts)}</b></span>
+        ${p.xg_score ? `<span class="chip" data-tip="기대득점(xG)을 반올림한 스코어 — 전력 차이가 드러나는 대안 예측">기대득점 기준 <b>${esc(p.xg_score)}</b></span>` : ""}
       </div>
       ${p.sources && p.sources.length ? `<div class="srcline">일정 출처: ${p.sources.map(esc).join(", ")}${
         p.actual_score ? ` · 결과 확인: ${(p.confirmed_by || []).map(esc).join(", ")}${(p.confirmed_by || []).length >= 2 ? " (교차 확인)" : ""}` : ""}</div>` : ""}
@@ -770,6 +794,70 @@ function renderTeams(r) {
     state.sort = { key: k, dir: state.sort.key === k ? -state.sort.dir : (["position", "defense", "name", "lost"].includes(k) ? 1 : -1) };
     renderTeams(state.report);
   });
+}
+
+/* ---------- 적중률 ---------- */
+let accuracyLoaded = false;
+async function loadAccuracy() {
+  if (accuracyLoaded) return;
+  try {
+    const res = await fetch(API.accuracy(LEAGUE));
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    accuracyLoaded = true;
+    renderAccuracy(data);
+  } catch (e) {
+    $("view-accuracy").innerHTML = `<div class="empty">적중률을 불러오지 못했습니다<br><small>${esc(e.message)}</small></div>`;
+  }
+}
+
+function rateBar(rate, color) {
+  const w = rate == null ? 0 : Math.round(rate * 100);
+  return `<span class="pbar"><span style="width:${w}%;background:${color}"></span></span>`;
+}
+
+function renderAccuracy(acc) {
+  const s = acc.season;
+  const tile = (k, v, sub) => `<div class="tile"><div class="k">${k}</div><div class="v num">${v}</div><div class="s">${sub}</div></div>`;
+  const pr = (x) => x == null ? "-" : pct(x);
+  const media = s.media_matches
+    ? tile("매체 반영 효과", `${pr(s.model_only_rate)} → ${pr(s.with_media_rate)}`, `매체 예측이 있던 ${s.media_matches}경기의 결과 적중률`)
+    : tile("매체 반영 효과", "-", "매체 예측이 있는 끝난 경기가 아직 없음");
+  const rows = acc.rounds.filter(r => r.finished > 0).reverse().map(r => {
+    const state = r.complete ? `<span class="tag">완료</span>` : `<span class="muted">${r.finished}/${r.matches} 진행</span>`;
+    const items = r.items.map(i => {
+      const done = i.actual != null;
+      const mark = !done ? '<span class="muted">예정</span>'
+        : i.outcome_hit ? '<span class="hit">✓ 결과 적중</span>' : '<span class="miss">✗ 결과 빗나감</span>';
+      const ex = done ? [i.exact_hit ? '<span class="hit">최빈 스코어 적중</span>' : "",
+                         i.xg_exact_hit ? '<span class="hit">xG 스코어 적중</span>' : ""].filter(Boolean).join(" · ") : "";
+      return `<tr><td class="l num">${esc(i.date.slice(5))}</td>
+        <td class="l">${esc(i.home)} – ${esc(i.away)}${i.media_count ? ` <span class="tag">매체 ${i.media_count}</span>` : ""}</td>
+        <td class="num">${esc(i.predicted)}</td><td class="num">${esc(i.xg_predicted || "-")}</td>
+        <td class="num"><b>${done ? esc(i.actual) : "-"}</b></td><td class="l">${mark}${ex ? ` <small>${ex}</small>` : ""}</td></tr>`;
+    }).join("");
+    return `<details class="round" ${r.matchday === acc.latest_complete_round ? "open" : ""}>
+      <summary>
+        <span class="rd">R${r.matchday}</span>
+        <span class="muted rdate">${esc(r.first_date.slice(5))}${r.first_date !== r.last_date ? " ~ " + esc(r.last_date.slice(5)) : ""}</span>
+        ${state}
+        <span class="rs">결과 <b class="num">${r.outcome_hits}/${r.finished}</b> ${rateBar(r.outcome_rate, "var(--home)")} <span class="num">${pr(r.outcome_rate)}</span></span>
+        <span class="rs">스코어 <b class="num">${r.exact_hits}/${r.finished}</b> <span class="num muted">(xG ${r.xg_exact_hits})</span></span>
+      </summary>
+      <div class="tablewrap"><table><thead><tr><th class="l">날짜</th><th class="l">경기</th><th>최빈 예측</th><th>xG 예측</th><th>실제</th><th class="l">판정</th></tr></thead>
+      <tbody>${items}</tbody></table></div>
+    </details>`;
+  }).join("");
+  $("view-accuracy").innerHTML = `
+    <div class="tiles">
+      ${tile("결과 적중률 (승·무·패)", pr(s.outcome_rate), `${s.outcome_hits} / ${s.finished}경기`)}
+      ${tile("스코어 적중률 (최빈 스코어)", pr(s.exact_rate), `${s.exact_hits} / ${s.finished}경기`)}
+      ${tile("스코어 적중률 (xG 스코어)", pr(s.xg_exact_rate), `${s.xg_exact_hits} / ${s.finished}경기`)}
+      ${media}
+    </div>
+    <p class="muted acc-note">각 경기일에 <b>그날 이전 데이터만으로</b> 만든 예측을 실제 결과와 비교합니다. 라운드의 모든 경기가 끝나면 '완료'로 표시됩니다.
+      참고: 무작위로 찍으면 결과 적중률은 약 33%, 정확한 스코어는 보통 10% 안팎이 상한입니다.</p>
+    <div class="panel">${rows || '<div class="empty">아직 끝난 경기가 없습니다.</div>'}</div>`;
 }
 
 /* ---------- 에이전트 구성 ---------- */

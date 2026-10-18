@@ -14,7 +14,7 @@ from pathlib import Path
 from ..config import MEDIA, MEDIA_FILE, MediaConfig
 from ..media.store import MediaStore, outcome, pundit_key
 from .base import Agent, MatchContext
-from .prediction_agent import confidence, summarize
+from .prediction_agent import confidence, outcome_of, summarize, xg_score
 
 
 class MediaConsensusAgent(Agent):
@@ -62,6 +62,7 @@ class MediaConsensusAgent(Agent):
             s2 = summarize(new)
             for k, v in s2.items():
                 setattr(p, k, v)
+            p.xg_score = xg_score(p.home_xg, p.away_xg, outcome_of(s2))
             p.confidence = confidence(max(s2["home_win"], s2["draw"], s2["away_win"]), min_games)
             p.media = {
                 "count": len(items),
