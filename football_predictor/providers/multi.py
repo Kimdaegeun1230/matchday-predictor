@@ -21,8 +21,8 @@ from ..config import League
 from ..models import Match, Player, Team
 from .base import DataProvider
 from .http import ApiError
-from .sources import (ApiFootballSource, FootballDataSource, OpenFootballSource, RawMatch, Source, SourceData,
-                      season_start_year)
+from .sources import (ApiFootballSource, FootballDataSource, FplInjurySource, OpenFootballSource, RawMatch, Source,
+                      SourceData, season_start_year)
 from .teamnames import display
 
 log = logging.getLogger(__name__)
@@ -32,12 +32,29 @@ def _stable_id(text: str) -> int:
     return zlib.crc32(text.encode()) & 0x7FFFFFFF
 
 
-def player_key(name: str) -> tuple[str, str]:
+def name_tokens(name: str) -> list[str]:
     s = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode().lower()
-    tokens = [t for t in re.split(r"[^a-z]+", s) if t]
+    return [t for t in re.split(r"[^a-z]+", s) if t]
+
+
+def player_key(name: str) -> tuple[str, str]:
+    tokens = name_tokens(name)
     if not tokens:
         return ("", "")
     return (tokens[0][0], tokens[-1]) if len(tokens) > 1 else ("", tokens[0])
+
+
+def same_player(a: str, b: str) -> bool:
+    """이름 첫 글자가 같고 성(첫 단어 제외)이 하나라도 겹치면 같은 선수.
+    예: "Martín Zubimendi" = "Martín Zubimendi Ibáñez", "Bukayo Saka" = "B. Saka".
+    한 단어 이름은 상대 이름의 성 부분에 그 단어가 있으면 같은 선수 (예: "Saka" = "Bukayo Saka")."""
+    ta, tb = name_tokens(a), name_tokens(b)
+    if not ta or not tb:
+        return False
+    if len(ta) == 1 or len(tb) == 1:
+        one, other = (ta, tb) if len(ta) == 1 else (tb, ta)
+        return one[0] in other[1:] or one == other
+    return ta[0][0] == tb[0][0] and bool(set(ta[1:]) & set(tb[1:]))
 
 
 class MultiSourceProvider(DataProvider):
@@ -45,7 +62,8 @@ class MultiSourceProvider(DataProvider):
 
     def __init__(self, sources: list[Source] | None = None, memo_seconds: int = 300):
         # 리스트 순서 = 우선순위
-        self.sources = sources if sources is not None else [FootballDataSource(), ApiFootballSource(), OpenFootballSource()]
+        self.sources = sources if sources is not None else [
+            FootballDataSource(), ApiFootballSource(), OpenFootballSource(), FplInjurySource()]
         self.memo_seconds = memo_seconds
         self._memo: dict[tuple, tuple[float, dict]] = {}
         self._as_of = date.today()
@@ -123,6 +141,8 @@ class MultiSourceProvider(DataProvider):
                 matches.append(self._resolve(season, h, a, rows, team, quality if season == start else None))
             if season == start:
                 for src, sd in bundles:
+                    if not getattr(sd, attr):  # 경기 정보를 주지 않는 출처(FPL 부상 전용 등)
+                        continue
                     missing = len(groups) - len({(m.home, m.away) for m in getattr(sd, attr)})
                     if missing:
                         quality["missing_in"][src.name] = missing
@@ -175,21 +195,26 @@ class MultiSourceProvider(DataProvider):
     def _merge_players(bundles, team) -> dict[int, list[Player]]:
         merged: dict[tuple[str, tuple[str, str]], Player] = {}
         by_source_id: dict[str, Player] = {}
+        by_team: dict[str, list[Player]] = {}
         for src, sd in bundles:
             for rp in sd.players:
                 if not rp.team or not rp.name:
                     continue
                 t = team(rp.team)
                 pk = player_key(rp.name)
+                names = [rp.name, *rp.aliases]
                 p = by_source_id.get(rp.source_id) if rp.source_id else None
                 p = p or merged.get((rp.team, pk))
+                if p is None:  # 표기가 다른 같은 선수 찾기 (중간 이름·성 두 개·한 단어 이름)
+                    p = next((c for c in by_team.get(rp.team, []) if any(same_player(c.name, n) for n in names)), None)
                 if p is None:
                     p = Player(id=_stable_id(f"{rp.team}|{pk}"), name=rp.name, team_id=t.id)
                     merged[(rp.team, pk)] = p
+                    by_team.setdefault(rp.team, []).append(p)
                 if rp.source_id:
                     by_source_id[rp.source_id] = p
-                # 더 긴(정식) 이름을 표시용으로
-                if len(rp.name) > len(p.name) and "." not in rp.name:
+                # 표시 이름은 우선순위가 높은 출처 것을 유지하되, 약칭("B. Saka")은 정식 이름으로 바꾼다
+                if "." in p.name and "." not in rp.name:
                     p.name = rp.name
                 p.position = p.position or rp.position
                 p.goals = max(p.goals, rp.goals)

@@ -5,8 +5,10 @@
 | football-data   | 무료 키, 약관 有  | O (주 출처)         | 등급에 따라 | 명단·득점자(등급에 따라) |
 | API-Football    | 무료 키, 약관 有  | O (교차 확인)       | O         | 부상·득점·도움     |
 | openfootball    | 퍼블릭 도메인     | O (반영 느림)       | O         | X                  |
+| FPL (비공식)    | 공식 약관 없음    | X (쓰지 않음)       | X         | 부상·결장·출전확률 |
 
 키가 없거나 요청이 막힌 출처는 건너뛰고, 그 사실을 status 에 남긴다.
+FPL 은 공개 문서·이용약관이 없는 비공식 API 라, 일정·결과에는 쓰지 않고 부상·결장 보강에만 쓴다.
 """
 from __future__ import annotations
 
@@ -53,6 +55,7 @@ class RawPlayer:
     minutes: int = 0
     play_prob: float = 1.0
     reason: str = ""
+    aliases: list[str] = field(default_factory=list)  # 다른 표기 (예: FPL web_name "Saka")
 
 
 @dataclass
@@ -224,6 +227,54 @@ class FootballDataSource(Source):
                     goals=s.get("goals") or 0, assists=s.get("assists") or 0, played=s.get("playedMatches") or 0))
         except ApiError as exc:
             sd.notes.append(f"득점자 미제공: {exc}")
+        return sd
+
+
+# ---------------------------------------------------------------- Fantasy Premier League (부상 정보만)
+FPL_BOOTSTRAP_URL = "https://fantasy.premierleague.com/api/bootstrap-static/"
+_FPL_POSITIONS = {1: "Goalkeeper", 2: "Defence", 3: "Midfield", 4: "Offence"}
+
+
+class FplInjurySource(Source):
+    key = "fpl"
+    name = "Fantasy Premier League"
+    url = "https://fantasy.premierleague.com"
+    license = "비공식 공개 API (공식 이용약관 없음) — 부상·결장 정보에만 사용"
+    attribution = "Injury news: Fantasy Premier League"
+
+    def fetch(self, league: League, as_of: date) -> SourceData:
+        if league.key != "EPL":
+            raise ApiError("프리미어리그만 제공")
+        data = cached_get_json(FPL_BOOTSTRAP_URL, ttl=self.ttl)
+        sd = SourceData(self.name)
+        team_by_id = {}
+        for t in data.get("teams", []):
+            k = team_key(t["name"])
+            team_by_id[t["id"]] = k
+            sd.teams.append(RawTeam(k, t["name"], t.get("short_name") or ""))
+
+        for e in data.get("elements", []):
+            status = e.get("status", "a")
+            if status in ("u", "n"):  # 이적·임대로 팀을 떠난 선수
+                continue
+            chance = e.get("chance_of_playing_next_round")
+            if status == "a":
+                prob = 1.0
+            elif chance is not None:
+                prob = chance / 100
+            else:
+                prob = 0.5 if status == "d" else 0.0
+            team = team_by_id.get(e.get("team"))
+            if not team:
+                continue
+            full = f"{e.get('first_name', '')} {e.get('second_name', '')}".strip()
+            sd.players.append(RawPlayer(
+                team, e.get("known_name") or full, f"fpl:{e.get('id')}",
+                _FPL_POSITIONS.get(e.get("element_type"), ""),
+                goals=e.get("goals_scored") or 0, assists=e.get("assists") or 0,
+                played=e.get("starts") or 0, minutes=e.get("minutes") or 0,
+                play_prob=prob, reason=e.get("news") or ("" if prob == 1 else status),
+                aliases=[n for n in (full, e.get("web_name")) if n]))
         return sd
 
 

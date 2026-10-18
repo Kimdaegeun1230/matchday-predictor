@@ -9,7 +9,7 @@ from football_predictor.agents.player_agent import PlayerAnalystAgent
 from football_predictor.agents.quality_agent import DataQualityAgent
 from football_predictor.config import get_league
 from football_predictor.providers import multi, sources
-from football_predictor.providers.multi import MultiSourceProvider, player_key
+from football_predictor.providers.multi import MultiSourceProvider, player_key, same_player
 from football_predictor.providers.teamnames import team_key
 
 EPL = get_league("EPL")
@@ -35,7 +35,8 @@ OPENFOOTBALL_PREV = {"matches": [
 FD_TEAMS = {"teams": [
     {"id": 57, "name": "Arsenal FC", "shortName": "Arsenal", "tla": "ARS",
      "squad": [{"id": 1, "name": "Bukayo Saka", "position": "Right Winger"},
-               {"id": 2, "name": "William Saliba", "position": "Centre-Back"}]},
+               {"id": 2, "name": "William Saliba", "position": "Centre-Back"},
+               {"id": 3, "name": "Martín Zubimendi", "position": "Defensive Midfield"}]},
     {"id": 65, "name": "Manchester City FC", "shortName": "Man City", "tla": "MCI", "squad": []},
     {"id": 1076, "name": "Coventry City FC", "shortName": "Coventry", "tla": "COV", "squad": []},
 ]}
@@ -83,6 +84,22 @@ AF_INJURIES = {"errors": [], "response": [
      "team": {"name": "Manchester City"}, "fixture": {"id": 9004}},
 ]}
 AF_PLAN_ERROR = {"errors": {"plan": "Free plans do not have access to this season"}, "response": []}
+FPL_BOOTSTRAP = {
+    "teams": [{"id": 1, "name": "Arsenal", "short_name": "ARS"}, {"id": 13, "name": "Man City", "short_name": "MCI"}],
+    "elements": [
+        {"id": 5, "team": 1, "element_type": 2, "first_name": "William", "second_name": "Saliba", "web_name": "Saliba",
+         "status": "i", "chance_of_playing_next_round": 0, "news": "Back injury - Unknown return date",
+         "minutes": 540, "starts": 6, "goals_scored": 0, "assists": 0},
+        {"id": 6, "team": 1, "element_type": 3, "first_name": "Martín", "second_name": "Zubimendi Ibáñez",
+         "web_name": "Zubimendi", "status": "d", "chance_of_playing_next_round": 75,
+         "news": "Knock - 75% chance of playing", "minutes": 500, "starts": 6, "goals_scored": 1, "assists": 1},
+        {"id": 7, "team": 13, "element_type": 4, "first_name": "Erling", "second_name": "Haaland", "web_name": "Haaland",
+         "status": "d", "chance_of_playing_next_round": 75, "news": "Knock", "minutes": 540, "starts": 6,
+         "goals_scored": 9, "assists": 1},
+        {"id": 8, "team": 1, "element_type": 4, "first_name": "Left", "second_name": "Club", "web_name": "Club",
+         "status": "u", "chance_of_playing_next_round": 0, "news": "Joined another club", "minutes": 0},
+    ],
+}
 
 
 def fake_get(url, headers=None, ttl=0):
@@ -111,15 +128,20 @@ def fake_get(url, headers=None, ttl=0):
             return {"errors": [], "response": []}
         if "/injuries" in url:
             return AF_INJURIES
+    if "fantasy.premierleague.com" in url:
+        return FPL_BOOTSTRAP
     raise AssertionError(f"예상하지 못한 URL: {url}")
 
 
-def provider(fd=True, af=True):
-    return MultiSourceProvider([
+def provider(fd=True, af=True, fpl=False):
+    srcs = [
         sources.FootballDataSource(api_key="fd-key" if fd else ""),
         sources.ApiFootballSource(api_key="af-key" if af else ""),
         sources.OpenFootballSource(),
-    ], memo_seconds=0)
+    ]
+    if fpl:
+        srcs.append(sources.FplInjurySource())
+    return MultiSourceProvider(srcs, memo_seconds=0)
 
 
 class TeamNameTest(unittest.TestCase):
@@ -138,6 +160,12 @@ class TeamNameTest(unittest.TestCase):
 
     def test_player_key_matches_initials(self):
         self.assertEqual(player_key("Bukayo Saka"), player_key("B. Saka"))
+
+    def test_same_player_variants(self):
+        self.assertTrue(same_player("Martín Zubimendi", "Martín Zubimendi Ibáñez"))
+        self.assertTrue(same_player("Saka", "Bukayo Saka"))
+        self.assertFalse(same_player("Ben White", "Bukayo Saka"))
+        self.assertFalse(same_player("Gabriel Jesus", "Gabriel Martinelli"))
 
 
 @mock.patch.object(sources, "cached_get_json", side_effect=fake_get)
@@ -224,6 +252,46 @@ class MergeTest(unittest.TestCase):
         with mock.patch.object(sources, "cached_get_json", side_effect=sources.ApiError("down")):
             with self.assertRaises(sources.ApiError):
                 provider(fd=False, af=False).get_matches(EPL, TODAY)
+
+
+@mock.patch.object(sources, "cached_get_json", side_effect=fake_get)
+class FplInjuryTest(unittest.TestCase):
+    def _ctx(self):
+        ctx = MatchContext(league=EPL, target_date=TODAY)
+        DataCollectorAgent(provider(af=False, fpl=True))(ctx)
+        DataQualityAgent()(ctx)
+        PlayerAnalystAgent()(ctx)
+        return ctx
+
+    def _player(self, ctx, team, surname):
+        tid = next(t.id for t in ctx.teams.values() if t.name == team)
+        found = [p for p in ctx.players[tid] if surname in p.name]
+        self.assertEqual(len(found), 1, [p.name for p in ctx.players[tid]])
+        return found[0]
+
+    def test_injuries_merged_into_football_data_squad(self, _):
+        ctx = self._ctx()
+        saliba = self._player(ctx, "Arsenal", "Saliba")
+        self.assertEqual((saliba.play_prob, saliba.position), (0.0, "Defence"))
+        self.assertIn("Back injury", saliba.absence_reason)
+        zubi = self._player(ctx, "Arsenal", "Zubimendi")   # 이름 표기가 달라도 한 명으로
+        self.assertEqual((zubi.name, zubi.play_prob), ("Martín Zubimendi", 0.75))
+        self.assertEqual(self._player(ctx, "Manchester City", "Haaland").play_prob, 0.75)
+        self.assertFalse(any("Club" in p.name for ps in ctx.players.values() for p in ps))  # 떠난 선수 제외
+
+    def test_fpl_not_used_for_matches_and_flagged(self, _):
+        ctx = self._ctx()
+        fx = ctx.fixtures[0]
+        self.assertNotIn("Fantasy Premier League", fx.sources)
+        fpl = next(s for s in ctx.source_report["sources"] if s["key"] == "fpl")
+        self.assertTrue(fpl["ok"])
+        self.assertIn("비공식", fpl["license"])
+        check = next(c for c in ctx.data_quality["checks"] if c["label"] == "부상·결장 정보")
+        self.assertEqual(check["status"], "good")
+        self.assertIn("비공식", check["detail"])
+        self.assertTrue(ctx.data_quality["injury_data"])
+        ars = next(t.id for t in ctx.teams.values() if t.name == "Arsenal")
+        self.assertGreater(ctx.squad_reports[ars].defense_factor, 1.0)  # 주전 수비수 결장 → 실점 증가
 
 
 class TimezoneTest(unittest.TestCase):

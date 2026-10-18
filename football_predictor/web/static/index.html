@@ -672,7 +672,7 @@ function squad(name, s, color) {
       <div class="factor" data-tip="주전 수비수·GK 결장 시 실점 기대치 조정">실점 보정<b>${f(s.defense_factor)}</b></div>
       <div class="factor">최근 5경기<b>${s.form_ppg.toFixed(2)}점</b></div>
     </div>
-    <div class="sub">결장 · 불확실</div>${missing}
+    <div class="sub">결장 · 불확실${(state.report?.sources || []).some(x => x.key === "fpl" && x.ok) ? " <span class=\"muted\">(출처: Fantasy Premier League, 비공식)</span>" : ""}</div>${missing}
     <div class="sub">핵심 선수</div>${key}
   </div>`;
 }

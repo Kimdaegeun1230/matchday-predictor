@@ -68,7 +68,9 @@ class DataQualityAgent(Agent):
         if sources:
             checks.append(self._check(
                 "부상·결장 정보", GOOD if injury_sources else WARN,
-                f"출처: {', '.join(injury_sources)}" if injury_sources else
+                f"출처: {', '.join(injury_sources)}"
+                + (" (비공식 출처 — 공식 발표와 다를 수 있음)" if "Fantasy Premier League" in injury_sources else "")
+                if injury_sources else
                 ("수동 입력(data/availability.json)만 반영" if manual else
                  "이번 시즌 부상 정보를 주는 무료 출처 없음 — data/availability.json 에 직접 입력 가능")))
 
