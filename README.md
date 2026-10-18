@@ -34,9 +34,13 @@ python main.py check-sources
 
 ## 영국 현지 매체 예측 반영 (`media/`, `agents/media_agent.py`)
 
-1. **수집** (`python main.py collect-media`): Claude(`claude-opus-5-5`)가 웹 검색으로 영국 매체(BBC Sport, Sky Sports,
-   Guardian, Telegraph, Times, Independent, Mail, Mirror, Standard, talkSPORT 등 허용 도메인만)를 찾아
-   칼럼니스트별 스코어 예측을 `record_predictions` 도구로 돌려준다. 기사 본문은 저장하지 않고 매체·작성자·스코어·링크·제목만 남긴다.
+1. **수집** — 두 가지 방법
+   - **예약 실행 (기본, 추가 비용 없음)**: PC 의 Claude 앱이 매일 오후 6시에 `media-due` 로 대상 경기를 받고,
+     직접 웹 검색해 `media-import` 로 넣은 뒤 `data/media/media.json` 을 커밋·푸시한다 → GitHub Actions 가 반영해 배포.
+   - **API 자동 수집** (`collect-media`, `ANTHROPIC_API_KEY` 필요·유료): GitHub Actions 안에서 Claude API 가 같은 일을 한다.
+   - 검색 대상은 AI 접근을 허용하는 매체만: Sky Sports, FourFourTwo, Football365, Planet Football, GiveMeSport, 90min, GOAL.
+     BBC·Guardian·Telegraph·Times·Independent·Mail·Mirror·Standard·Sun·talkSPORT·The Athletic 은 AI 접근을 막아 두어 쓰지 않는다.
+   - 기사 본문은 저장하지 않고 매체·작성자·스코어·링크·제목만 남긴다. 허용 매체가 아닌 링크와 모르는 경기는 자동으로 버린다.
    - 대상: 72시간 안에 시작하는 경기(킥오프 하루 전 한 번 더), 적중률 계산용으로 최근 3주 안에 끝난 경기
    - 같은 날짜 경기는 한 번의 호출로 묶고, 실행당 최대 3회 호출 (`config.py` 의 `MediaConfig`)
    - 안전 분류기가 요청을 거절하면 다른 모델로 자동 재시도하도록 `fallbacks: "default"` 를 켜 두었다
