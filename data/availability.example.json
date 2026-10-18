@@ -1,0 +1,8 @@
+{
+  "EPL": {
+    "Arsenal": [
+      { "player": "Bukayo Saka", "reason": "injury" },
+      { "player": "Martin Ødegaard", "reason": "knock", "play_prob": 0.5 }
+    ]
+  }
+}

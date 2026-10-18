@@ -1,0 +1,8 @@
+.env
+.claude/
+data/cache/
+data/availability.json
+output/
+site/
+__pycache__/
+*.pyc

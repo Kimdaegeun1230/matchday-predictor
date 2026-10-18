@@ -1,0 +1,64 @@
+# 1시간마다(매시 15분, UTC 기준) 예측을 다시 계산해 GitHub Pages 에 배포한다.
+# API 사용량: football-data.org 는 실행당 약 5회(분당 10회 한도 안), API-Football 은 실행당 1~2회(하루 100회 한도 안).
+# 필요한 설정 (저장소 Settings):
+#   Secrets and variables → Actions → Secrets : FOOTBALL_DATA_API_KEY, API_FOOTBALL_KEY
+#   Secrets and variables → Actions → Variables: SITE_DOMAIN (예: matchdaypredictor.com, 없으면 생략)
+#   Pages → Build and deployment → Source: GitHub Actions
+name: Build and deploy
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run tests
+        run: python -m unittest discover -s tests -t .
+
+      - name: Check data sources
+        env:
+          FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY }}
+          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+        run: python main.py check-sources
+
+      - name: Build static site
+        env:
+          FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY }}
+          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+        run: python main.py build --out site --domain "${{ vars.SITE_DOMAIN }}"
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

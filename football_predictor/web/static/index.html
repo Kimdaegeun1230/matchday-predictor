@@ -1,0 +1,841 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Matchday Predictor</title>
+<meta name="description" content="프리미어리그 경기일 스코어 예측 — 여러 데이터 출처를 교차 검증한 통계 모델">
+<!--MP_STATIC-->
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb; --surface-2: #f3f2ee;
+    --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10);
+    --home: #2a78d6; --away: #e34948; --draw: #c3c2b7;
+    --heat: 42,120,214;
+    --good: #0ca30c; --warn: #fab219; --bad: #d03b3b;
+    --accent: #0b0b0b; --on-accent: #fcfcfb;
+    --shadow: 0 1px 2px rgba(11,11,11,0.04), 0 4px 16px rgba(11,11,11,0.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --page: #0d0d0d; --surface: #1a1a19; --surface-2: #232321;
+      --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+      --home: #3987e5; --away: #e66767; --draw: #5c5b57;
+      --heat: 57,135,229;
+      --accent: #f0efec; --on-accent: #1a1a19;
+      --shadow: none;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --surface-2: #232321;
+    --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+    --home: #3987e5; --away: #e66767; --draw: #5c5b57;
+    --heat: 57,135,229;
+    --accent: #f0efec; --on-accent: #1a1a19;
+    --shadow: none;
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; }
+  body {
+    background: var(--page); color: var(--ink);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  button { font: inherit; color: inherit; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+  .num { font-variant-numeric: tabular-nums; }
+  .muted { color: var(--muted); }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+  /* ---------- 상단 ---------- */
+  header.top { border-bottom: 1px solid var(--border); background: var(--surface); position: sticky; top: 0; z-index: 10; }
+  .top .wrap { display: flex; align-items: center; gap: 12px; height: 56px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 650; font-size: 15px; letter-spacing: -0.01em; }
+  .brand svg { width: 22px; height: 22px; }
+  .pill { font-size: 12px; color: var(--ink-2); border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; white-space: nowrap; }
+  .top .spacer { flex: 1; }
+  .src { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .iconbtn { border: 1px solid var(--border); background: transparent; border-radius: 8px; width: 32px; height: 32px; display: grid; place-items: center; cursor: pointer; flex: none; }
+  .iconbtn:hover { background: var(--surface-2); }
+  .iconbtn svg { width: 16px; height: 16px; }
+
+  nav.views { display: flex; gap: 4px; margin: 20px 0 16px; border-bottom: 1px solid var(--border); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+  nav.views::-webkit-scrollbar { display: none; }
+  nav.views button { border: 0; background: none; padding: 10px 12px; cursor: pointer; color: var(--muted); font-weight: 550; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+  nav.views button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+  nav.views button:hover { color: var(--ink); }
+
+  /* ---------- 경기일 이동 ---------- */
+  .daynav { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  .daynav .day { flex: 1; min-width: 200px; }
+  .daynav .day b { font-size: 20px; letter-spacing: -0.01em; font-weight: 650; display: block; }
+  .daynav .day span { color: var(--muted); font-size: 13px; }
+  .daynav input[type=date] { font: inherit; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--ink); height: 32px; }
+
+  /* ---------- 경기 목록 ---------- */
+  .mlist { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; }
+  .mlist-h { display: flex; justify-content: space-between; padding: 10px 16px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); background: var(--surface-2); }
+  .mrow {
+    display: grid; grid-template-columns: 72px minmax(0,1fr) 92px minmax(0,1fr) 168px 16px;
+    grid-template-areas: "t h sc a pr go"; align-items: center; gap: 12px;
+    padding: 14px 16px; color: inherit; text-decoration: none; border-bottom: 1px solid var(--grid);
+  }
+  .mrow:last-child { border-bottom: 0; }
+  .mrow:hover { background: var(--surface-2); }
+  .mrow:focus-visible { outline: 2px solid var(--home); outline-offset: -2px; }
+  .mrow .t { grid-area: t; font-weight: 600; font-size: 13px; }
+  .mrow .t small { display: block; color: var(--muted); font-weight: 400; font-size: 11px; }
+  .mrow .side { display: flex; align-items: center; gap: 10px; min-width: 0; font-weight: 600; }
+  .mrow .side.h { grid-area: h; justify-content: flex-end; text-align: right; }
+  .mrow .side.a { grid-area: a; }
+  .mrow .side .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .crest.sm { width: 28px; height: 28px; font-size: 9px; border-width: 2px; }
+  .mrow .sc { grid-area: sc; text-align: center; }
+  .mrow .sc b { font-size: 20px; letter-spacing: 0.04em; display: block; line-height: 1.1; }
+  .mrow .sc small { font-size: 11px; color: var(--muted); }
+  .mrow .sc small.hit { color: var(--good); } .mrow .sc small.miss { color: var(--bad); }
+  .mrow .pr { grid-area: pr; }
+  .mrow .pr .bar { height: 6px; }
+  .mrow .pr .nums { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-2); margin-top: 4px; }
+  .mrow .pr .nums span:first-child { display: flex; align-items: center; gap: 6px; }
+  .mrow .go { grid-area: go; color: var(--muted); }
+  .mrow .go svg { width: 14px; height: 14px; display: block; }
+
+  /* ---------- 상세 화면 ---------- */
+  .dhead { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  .back { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 0 12px 0 8px; height: 32px; cursor: pointer; color: var(--ink); text-decoration: none; font-size: 13px; }
+  .back:hover { background: var(--surface-2); }
+  .back svg { width: 14px; height: 14px; }
+  .dhead .ctx { flex: 1; color: var(--muted); font-size: 13px; min-width: 160px; }
+  .dhead .iconbtn { text-decoration: none; color: var(--ink); }
+  .dhead .iconbtn[aria-disabled="true"] { opacity: .35; pointer-events: none; }
+  .hero .fixture { padding: 8px 0; }
+  .hero .score .big { font-size: 44px; }
+  .hero .crest { width: 52px; height: 52px; font-size: 13px; border-width: 3px; }
+  .hero .team .nm { font-size: 18px; }
+  .dgrid { display: grid; grid-template-columns: auto 1fr 1fr; gap: 12px; margin-top: 12px; align-items: start; }
+  .dgrid > .panel { padding: 16px; }
+
+  /* ---------- 경기 카드 ---------- */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; }
+  .card .body { padding: 16px; }
+  .meta { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+  .badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+  .result { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); }
+
+  .fixture { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; }
+  .team { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .team.away { flex-direction: row-reverse; text-align: right; }
+  .crest { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; flex: none; border: 2px solid; background: var(--surface); }
+  .crest.h { border-color: var(--home); }
+  .crest.a { border-color: var(--away); }
+  .team .nm { font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .team .fm { display: flex; gap: 2px; margin-top: 3px; }
+  .team.away .fm { justify-content: flex-end; }
+  .score { text-align: center; }
+  .score .big { font-size: 30px; font-weight: 700; letter-spacing: 0.04em; line-height: 1.1; }
+  .score .xg { font-size: 12px; color: var(--muted); margin-top: 2px; white-space: nowrap; }
+
+  .fr { width: 16px; height: 16px; border-radius: 4px; font-size: 10px; font-weight: 700; display: inline-grid; place-items: center; color: #fff; }
+  .fr.W { background: var(--good); } .fr.D { background: var(--muted); } .fr.L { background: var(--bad); }
+
+  .wdl { margin-top: 14px; }
+  .bar { display: flex; height: 10px; gap: 2px; }
+  .bar span { display: block; height: 100%; min-width: 2px; }
+  .bar span:first-child { border-radius: 4px 0 0 4px; }
+  .bar span:last-child { border-radius: 0 4px 4px 0; }
+  .bar .h { background: var(--home); } .bar .d { background: var(--draw); } .bar .a { background: var(--away); }
+  .wdl .lbl { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-2); margin-top: 6px; }
+  .wdl .lbl b { color: var(--ink); font-weight: 650; }
+  .lbl i { font-style: normal; display: inline-flex; align-items: center; gap: 5px; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .chip { font-size: 12px; border: 1px solid var(--border); border-radius: 999px; padding: 2px 9px; color: var(--ink-2); background: var(--surface); }
+  .chip b { color: var(--ink); font-weight: 600; }
+
+  .dgrid h4 { margin: 0 0 10px; font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: 0.02em; }
+
+  .heat { display: grid; grid-template-columns: 22px repeat(6, 36px); grid-auto-rows: 30px; gap: 2px; font-size: 11px; }
+  .heat .ax { display: grid; place-items: center; color: var(--muted); }
+  .heat .c { display: grid; place-items: center; border-radius: 4px; cursor: default; color: var(--ink); background: var(--surface-2); }
+  .heat .c.dark { color: #fff; }
+  .heat .c.pick { outline: 2px solid var(--ink); outline-offset: -2px; font-weight: 700; }
+  .heat-cap { font-size: 11px; color: var(--muted); margin-top: 6px; display: flex; justify-content: space-between; width: 240px; }
+
+  .squad .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; padding: 6px 0; border-bottom: 1px solid var(--grid); }
+  .squad .row:last-child { border-bottom: 0; }
+  .squad .row .r { color: var(--ink-2); white-space: nowrap; }
+  .squad .factors { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .squad .factor { background: var(--surface-2); border-radius: 8px; padding: 6px 10px; font-size: 12px; color: var(--ink-2); }
+  .squad .factor b { color: var(--ink); font-size: 14px; display: block; }
+  .squad .sub { margin: 12px 0 4px; font-size: 12px; color: var(--muted); }
+  .prob { font-size: 11px; border-radius: 999px; padding: 1px 7px; background: var(--surface-2); color: var(--ink-2); white-space: nowrap; }
+  .reason { color: var(--muted); font-size: 12px; display: block; }
+  .tname { display: flex; align-items: center; gap: 8px; font-weight: 650; margin-bottom: 10px; }
+  .tname .sw { width: 10px; height: 10px; border-radius: 3px; }
+
+  /* ---------- 팀 전력 ---------- */
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); }
+  .panel-h { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .panel-h h3 { margin: 0; font-size: 15px; }
+  .panel-h p { margin: 0; font-size: 12px; color: var(--muted); }
+  .tablewrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { padding: 9px 10px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--grid); }
+  th { font-size: 12px; font-weight: 600; color: var(--muted); cursor: pointer; user-select: none; position: sticky; top: 0; background: var(--surface); }
+  th:hover { color: var(--ink); }
+  th.sorted { color: var(--ink); }
+  th.l, td.l { text-align: left; }
+  tbody tr:hover { background: var(--surface-2); }
+  tbody tr:last-child td { border-bottom: 0; }
+  .tcell { display: flex; align-items: center; gap: 8px; }
+  .mini { font-size: 10px; font-weight: 700; width: 30px; color: var(--muted); }
+  .tag { font-size: 10px; border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; color: var(--ink-2); }
+  .meter { display: inline-flex; align-items: center; gap: 6px; }
+  .meter .track { width: 64px; height: 6px; position: relative; background: var(--grid); border-radius: 3px; }
+  .meter .track::after { content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--axis); }
+  .meter .fill { position: absolute; top: 0; bottom: 0; border-radius: 3px; }
+  .meter .fill.up { background: var(--home); } .meter .fill.dn { background: var(--away); }
+
+  /* ---------- 에이전트 ---------- */
+  .coord { background: var(--accent); color: var(--on-accent); border-radius: 14px; padding: 16px; display: flex; gap: 14px; align-items: center; }
+  .coord .ic { width: 40px; height: 40px; border-radius: 10px; background: rgba(127,127,127,.25); display: grid; place-items: center; flex: none; }
+  .coord .ic svg { width: 20px; height: 20px; }
+  .coord h3 { margin: 0; font-size: 15px; }
+  .coord p { margin: 2px 0 0; font-size: 13px; opacity: .75; }
+  .coord .stat { margin-left: auto; text-align: right; font-size: 12px; opacity: .8; white-space: nowrap; }
+  .coord .stat b { display: block; font-size: 18px; opacity: 1; }
+  .pipe { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-top: 10px; position: relative; }
+  .lv { width: 16px; height: 16px; border-radius: 50%; color: #fff; font-size: 10px; font-weight: 700; display: inline-grid; place-items: center; margin-right: 6px; flex: none; vertical-align: -3px; }
+  .notice { display: flex; gap: 10px; align-items: flex-start; background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--warn); border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; font-size: 13px; color: var(--ink-2); }
+  .notice.bad { border-left-color: var(--bad); }
+  .notice a { color: var(--ink); }
+  .srcline { font-size: 12px; color: var(--muted); margin-top: 10px; }
+  .node { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px; position: relative; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .node .step { font-size: 11px; color: var(--muted); display: flex; justify-content: space-between; }
+  .node h4 { margin: 0; font-size: 14px; }
+  .node code { font-size: 11px; color: var(--muted); font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
+  .node .desc { font-size: 12px; color: var(--ink-2); }
+  .node .out { margin-top: auto; font-size: 12px; background: var(--surface-2); border-radius: 8px; padding: 8px; color: var(--ink); word-break: keep-all; }
+  .node:not(:last-child)::after {
+    content: ""; position: absolute; right: -9px; top: 50%; width: 8px; height: 8px;
+    border-top: 2px solid var(--axis); border-right: 2px solid var(--axis); transform: translateY(-50%) rotate(45deg); z-index: 1;
+  }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+  .src-item { padding: 14px 16px; border-bottom: 1px solid var(--grid); }
+  .src-item:last-child { border-bottom: 0; }
+  .src-item h5 { margin: 0 0 2px; font-size: 14px; display: flex; gap: 8px; align-items: center; }
+  .src-item p { margin: 0; font-size: 12px; color: var(--ink-2); }
+  .src-item code { font-size: 11px; color: var(--muted); font-family: ui-monospace, Consolas, monospace; }
+  .kv { display: grid; grid-template-columns: 1fr auto; }
+  .kv div { padding: 9px 16px; border-bottom: 1px solid var(--grid); font-size: 13px; }
+  .kv div:nth-child(even) { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .kv div:nth-last-child(-n+2) { border-bottom: 0; }
+  .kv small { display: block; color: var(--muted); font-size: 11px; }
+
+  /* ---------- 공통 상태 ---------- */
+  .empty { text-align: center; color: var(--muted); padding: 48px 16px; background: var(--surface); border: 1px dashed var(--border); border-radius: 14px; }
+  .skel { height: 210px; border-radius: 14px; background: linear-gradient(90deg, var(--surface) 0%, var(--surface-2) 50%, var(--surface) 100%); background-size: 200% 100%; animation: sh 1.2s infinite; border: 1px solid var(--border); }
+  @keyframes sh { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+  footer { color: var(--muted); font-size: 12px; padding: 32px 0 40px; }
+
+  #tip { position: fixed; pointer-events: none; z-index: 50; background: var(--ink); color: var(--surface); font-size: 12px; padding: 6px 9px; border-radius: 6px; opacity: 0; transition: opacity .08s; white-space: nowrap; }
+
+  @media (max-width: 900px) {
+    .dgrid { grid-template-columns: 1fr 1fr; }
+    .dgrid .heatbox { grid-column: 1 / -1; }
+    .mrow { grid-template-columns: 64px minmax(0,1fr) 72px minmax(0,1fr) 16px;
+            grid-template-areas: "t h sc a go" "pr pr pr pr pr"; row-gap: 10px; }
+    .pipe { grid-template-columns: 1fr; }
+    .node:not(:last-child)::after { right: auto; left: 50%; top: auto; bottom: -9px; transform: translateX(-50%) rotate(135deg); }
+    .grid2 { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 560px) {
+    .src { display: none; }
+    .dgrid { grid-template-columns: 1fr; }
+    .mrow { grid-template-columns: minmax(0,1fr) 64px minmax(0,1fr);
+            grid-template-areas: "t t t" "h sc a" "pr pr pr"; gap: 8px; padding: 12px 14px; }
+    .mrow .t { display: flex; gap: 6px; align-items: baseline; }
+    .mrow .t small { display: inline; }
+    .mrow .go { display: none; }
+    .mrow .side { flex-direction: column; gap: 4px; text-align: center; }
+    .mrow .side.h { flex-direction: column-reverse; justify-content: center; text-align: center; }
+    .mrow .side .nm { white-space: normal; font-size: 13px; line-height: 1.25; }
+    .hero .score .big { font-size: 30px; }
+    .hero .crest { width: 40px; height: 40px; font-size: 11px; }
+    .hero .team .nm { font-size: 14px; }
+    .brand { white-space: nowrap; }
+    #leaguePill { display: none; }
+    .score .big { font-size: 24px; }
+    .fixture { align-items: start; gap: 8px; }
+    .team, .team.away { flex-direction: column; text-align: center; gap: 6px; }
+    .team .nm { font-size: 13px; white-space: normal; line-height: 1.25; }
+    .team .fm, .team.away .fm { justify-content: center; }
+    .crest { width: 32px; height: 32px; font-size: 10px; }
+    .coord { flex-wrap: wrap; }
+    .coord .stat { margin-left: 0; text-align: left; }
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+        <circle cx="12" cy="12" r="9.5"/><path d="M12 7.2l3.3 2.4-1.3 3.9h-4l-1.3-3.9z" fill="currentColor"/>
+        <path d="M12 7.2V2.6M15.3 9.6l4.4-1.4M14 13.5l2.7 3.8M10 13.5l-2.7 3.8M8.7 9.6L4.3 8.2"/>
+      </svg>
+      Matchday Predictor
+    </div>
+    <span class="pill" id="leaguePill">Premier League</span>
+    <div class="spacer"></div>
+    <span class="src" id="src"></span>
+    <button class="iconbtn" id="themeBtn" aria-label="테마 전환" title="테마 전환"></button>
+  </div>
+</header>
+
+<main class="wrap">
+  <nav class="views" role="tablist">
+    <button role="tab" data-view="matches" aria-selected="true">경기 예측</button>
+    <button role="tab" data-view="teams" aria-selected="false">팀 전력</button>
+    <button role="tab" data-view="agents" aria-selected="false">에이전트 구성</button>
+  </nav>
+
+  <div class="daynav" id="daynav">
+    <button class="iconbtn" id="prevDay" aria-label="이전 경기일"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 3L5 8l5 5"/></svg></button>
+    <button class="iconbtn" id="nextDay" aria-label="다음 경기일"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3l5 5-5 5"/></svg></button>
+    <div class="day"><b id="dayTitle">—</b><span id="daySub"></span></div>
+    <label class="sr" for="date">날짜 선택</label>
+    <input type="date" id="date">
+  </div>
+
+  <section id="view-matches">
+    <div id="matchList"></div>
+  </section>
+  <section id="view-detail" hidden></section>
+  <section id="view-teams" hidden></section>
+  <section id="view-agents" hidden></section>
+
+  <footer id="foot">예측은 통계 모델 결과이며 실제 결과를 보장하지 않습니다.</footer>
+</main>
+<div id="tip" role="tooltip"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const pct = (x, d = 0) => (x * 100).toFixed(d) + "%";
+const LEAGUE = "EPL";
+/* 정적 사이트(main.py build)면 미리 만든 JSON 파일을, 아니면 로컬 서버 API를 읽는다 */
+const STATIC = !!window.MP_STATIC;
+const API = {
+  calendar: (l) => STATIC ? `data/${l}/calendar.json` : `/api/calendar?league=${l}`,
+  predictions: (l, d) => STATIC ? `data/${l}/predictions/${d}.json` : `/api/predictions?league=${l}&date=${d}`,
+};
+const state = { report: null, calendar: [], view: "matches", sort: { key: "position", dir: 1 } };
+
+/* ---------- 테마 ---------- */
+const THEMES = ["auto", "light", "dark"];
+const THEME_ICON = {
+  auto: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5.5"/><path d="M8 2.5v11A5.5 5.5 0 0 0 8 2.5z" fill="currentColor"/></svg>',
+  light: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="3"/><path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8M3.4 3.4l1.3 1.3M11.3 11.3l1.3 1.3M3.4 12.6l1.3-1.3M11.3 4.7l1.3-1.3"/></svg>',
+  dark: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 9.5A5.5 5.5 0 1 1 6.5 3a4.5 4.5 0 0 0 6.5 6.5z"/></svg>',
+};
+function applyTheme(t) {
+  if (t === "auto") document.documentElement.removeAttribute("data-theme");
+  else document.documentElement.setAttribute("data-theme", t);
+  $("themeBtn").innerHTML = THEME_ICON[t];
+  $("themeBtn").title = { auto: "테마: 시스템", light: "테마: 라이트", dark: "테마: 다크" }[t];
+}
+let theme = "auto";
+try { theme = localStorage.getItem("mp-theme") || "auto"; } catch (e) {}
+applyTheme(theme);
+$("themeBtn").onclick = () => {
+  theme = THEMES[(THEMES.indexOf(theme) + 1) % 3];
+  applyTheme(theme);
+  try { localStorage.setItem("mp-theme", theme); } catch (e) {}
+};
+
+/* ---------- 툴팁 ---------- */
+const tip = $("tip");
+document.addEventListener("mouseover", (e) => {
+  const el = e.target.closest("[data-tip]");
+  if (!el) { tip.style.opacity = 0; return; }
+  tip.innerHTML = el.dataset.tip;
+  tip.style.opacity = 1;
+});
+document.addEventListener("mousemove", (e) => {
+  if (tip.style.opacity !== "1") return;
+  const w = tip.offsetWidth;
+  tip.style.left = Math.min(window.innerWidth - w - 8, e.clientX + 12) + "px";
+  tip.style.top = (e.clientY + 16) + "px";
+});
+
+/* ---------- 날짜 ---------- */
+const fmtDay = (iso) => new Date(iso + "T12:00:00").toLocaleDateString("ko-KR", { month: "long", day: "numeric", weekday: "short" });
+const fmtTime = (iso) => new Date(iso).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
+
+function stepDay(dir) {
+  const cur = $("date").value;
+  const dates = state.calendar.map(d => d.date);
+  const target = dir > 0 ? dates.find(d => d > cur) : [...dates].reverse().find(d => d < cur);
+  if (target) { $("date").value = target; load(); }
+}
+$("prevDay").onclick = () => stepDay(-1);
+$("nextDay").onclick = () => stepDay(1);
+$("date").onchange = load;
+
+/* ---------- 탭 / 화면 전환 ---------- */
+function showView(view) {
+  state.view = view;
+  document.querySelectorAll("nav.views button").forEach(x =>
+    x.setAttribute("aria-selected", x.dataset.view === (view === "detail" ? "matches" : view)));
+  ["matches", "detail", "teams", "agents"].forEach(v => $("view-" + v).hidden = v !== view);
+  $("daynav").hidden = view === "detail";
+  if (view !== "detail") try { localStorage.setItem("mp-view", view); } catch (e) {}
+}
+document.querySelector("nav.views").onclick = (e) => {
+  const b = e.target.closest("button[data-view]");
+  if (!b) return;
+  if (location.hash) history.pushState(null, "", location.pathname);
+  showView(b.dataset.view);
+};
+
+/* 상세 화면 주소: #/match/<날짜>/<경기 id> → 새로고침·뒤로가기·링크 공유가 그대로 동작 */
+const matchHref = (p) => `#/match/${state.report.date}/${p.match_id}`;
+async function route() {
+  const m = location.hash.match(/^#\/match\/(\d{4}-\d{2}-\d{2})\/(-?\d+)$/);
+  if (!m) {
+    if (state.view === "detail") showView("matches");
+    return;
+  }
+  const [, date, id] = m;
+  if (!state.report || state.report.date !== date) {
+    $("date").value = date;
+    await load({ routeAfter: false });
+  }
+  const p = state.report?.predictions.find(x => String(x.match_id) === id);
+  if (!p) { history.replaceState(null, "", location.pathname); showView("matches"); return; }
+  renderDetail(p);
+  showView("detail");
+  window.scrollTo(0, 0);
+}
+window.addEventListener("hashchange", route);
+
+/* ---------- 로드 ---------- */
+async function init() {
+  let saved = null;
+  try { saved = localStorage.getItem("mp-view"); } catch (e) {}
+  if (saved && saved !== "matches" && !location.hash) showView(saved);
+  $("date").value = new Date().toISOString().slice(0, 10);
+  $("dayTitle").textContent = "경기 일정 불러오는 중…";
+  $("matchList").innerHTML = '<div class="skel"></div>';
+  try {
+    const cal = await fetch(API.calendar(LEAGUE)).then(r => r.json());
+    state.calendar = Array.isArray(cal) ? cal : [];
+    const next = nextMatchDate(state.calendar, $("date").value);
+    if (next) $("date").value = next;
+  } catch (e) {}
+  if (location.hash) route(); else load();
+}
+
+/* 오늘 이후 아직 끝나지 않은 경기가 있는 첫 날짜 (없으면 마지막 경기일) */
+function nextMatchDate(calendar, today) {
+  const upcoming = calendar.find(d => d.date >= today && d.finished < d.matches);
+  return (upcoming || calendar[calendar.length - 1] || {}).date;
+}
+
+async function load({ routeAfter = true } = {}) {
+  if (routeAfter && location.hash) history.replaceState(null, "", location.pathname);
+  const date = $("date").value;
+  const cal = state.calendar.find(d => d.date === date);
+  $("dayTitle").textContent = fmtDay(date);
+  $("daySub").textContent = cal ? `라운드 ${cal.matchday ?? "-"} · ${cal.matches}경기` : "경기 없음";
+  const dates = state.calendar.map(d => d.date);
+  $("prevDay").disabled = !dates.some(d => d < date);
+  $("nextDay").disabled = !dates.some(d => d > date);
+
+  if (state.view === "detail") showView("matches");
+  if (STATIC && !cal) {  // 정적 사이트에는 경기일 파일만 있음
+    $("matchList").innerHTML = '<div class="empty">이 날짜에는 경기가 없습니다. 화살표로 다른 경기일을 선택하세요.</div>';
+    return;
+  }
+  $("matchList").innerHTML = '<div class="skel"></div>';
+  try {
+    const res = await fetch(API.predictions(LEAGUE, date));
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    state.report = data;
+    render();
+  } catch (e) {
+    $("matchList").innerHTML = `<div class="empty">데이터를 불러오지 못했습니다<br><small>${esc(e.message)}</small></div>`;
+  }
+}
+
+function render() {
+  const r = state.report;
+  $("src").textContent = `데이터: ${r.data_source}`;
+  $("leaguePill").textContent = r.league_name;
+  renderList(r);
+  renderTeams(r);
+  renderAgents(r);
+  const gen = new Date(r.generated_at).toLocaleString("ko-KR");
+  const credits = (r.sources || []).filter(s => s.ok).map(s => s.attribution);
+  $("foot").textContent = `분석 시각 ${gen} · 학습 경기 ${r.training_matches} · 예측은 통계 모델 결과이며 실제 결과를 보장하지 않습니다.`
+    + (credits.length ? ` · ${credits.join(" · ")}` : "");
+}
+
+/* ---------- 경기 목록 / 상세 ---------- */
+const CONF = { high: ["var(--good)", "신뢰도 높음"], medium: ["var(--warn)", "신뢰도 보통"], low: ["var(--muted)", "신뢰도 낮음"] };
+const formChips = (f) => [...(f || "")].map(c => `<span class="fr ${c}" title="${{ W: "승", D: "무", L: "패" }[c]}">${c}</span>`).join("");
+const outcome = (s) => { const [h, a] = s.split("-").map(Number); return h > a ? "H" : h === a ? "D" : "A"; };
+
+const seg = (cls, v, label) => `<span class="${cls}" style="flex:${Math.max(v, 0.01)}" data-tip="${label} ${pct(v, 1)}"></span>`;
+const wdlBar = (p) => `<div class="bar" role="img" aria-label="홈승 ${pct(p.home_win)}, 무승부 ${pct(p.draw)}, 원정승 ${pct(p.away_win)}">
+  ${seg("h", p.home_win, "홈승")}${seg("d", p.draw, "무승부")}${seg("a", p.away_win, "원정승")}</div>`;
+const CHEVRON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3l5 5-5 5"/></svg>';
+
+function resultBadge(p) {
+  if (p.actual_score) {
+    const hit = outcome(p.actual_score) === outcome(p.predicted_score);
+    return `<span class="result">종료 ${esc(p.actual_score)} · ${hit ? "✓ 결과 적중" : "✗ 빗나감"}</span>`;
+  }
+  return p.status === "IN_PLAY" ? `<span class="result">진행 중</span>` : "";
+}
+
+function qualityNotice(r) {
+  const q = r.data_quality;
+  if (!q || !q.checks || q.overall === "good") return "";
+  const rank = { bad: 0, warn: 1 };
+  const issues = q.checks.filter(c => c.status !== "good")
+    .sort((a, b) => rank[a.status] - rank[b.status])
+    .map(c => `${esc(c.label)}: ${esc(c.detail.split(" — ")[0].split(" → ")[0])}`);
+  return `<div class="notice ${q.overall}">${levelIcon(q.overall)}<div>
+    <b>데이터 ${LEVEL[q.overall][2]}</b> — 예측 정확도가 낮아질 수 있습니다.
+    <span class="muted">${issues.slice(0, 2).join(" / ")}</span>
+    <a href="#" data-goto="agents">자세히</a></div></div>`;
+}
+document.addEventListener("click", (e) => {
+  const a = e.target.closest("[data-goto]");
+  if (!a) return;
+  e.preventDefault();
+  document.querySelector(`nav.views button[data-view="${a.dataset.goto}"]`)?.click();
+});
+
+function renderList(r) {
+  const el = $("matchList");
+  if (!r.predictions.length) {
+    el.innerHTML = '<div class="empty">이 날짜에는 경기가 없습니다. 화살표로 다른 경기일을 선택하세요.</div>';
+    return;
+  }
+  el.innerHTML = qualityNotice(r) + `<div class="mlist">
+    <div class="mlist-h"><span>${r.predictions.length}경기 · 경기를 누르면 상세 분석</span><span>홈승 · 무 · 원정승</span></div>
+    ${r.predictions.map(row).join("")}
+  </div>`;
+}
+
+function row(p) {
+  const [cc, cl] = CONF[p.confidence] || CONF.low;
+  let sub = "예상";
+  let subCls = "";
+  if (p.actual_score) {
+    const hit = outcome(p.actual_score) === outcome(p.predicted_score);
+    sub = `실제 ${esc(p.actual_score)} ${hit ? "✓" : "✗"}`;
+    subCls = hit ? "hit" : "miss";
+  } else if (p.status === "IN_PLAY") {
+    sub = "진행 중";
+  }
+  return `<a class="mrow" href="${matchHref(p)}" aria-label="${esc(p.home_team)} 대 ${esc(p.away_team)} 상세 분석">
+    <div class="t num">${fmtTime(p.kickoff)}<small><span class="dot" style="background:${cc};width:6px;height:6px;margin-right:4px"></span>${cl.replace("신뢰도 ", "신뢰 ")}</small></div>
+    <div class="side h"><span class="nm">${esc(p.home_team)}</span><span class="crest sm h">${esc(p.home_tla)}</span></div>
+    <div class="sc"><b class="num">${p.predicted_score.replace("-", " : ")}</b><small class="${subCls}">${sub}</small></div>
+    <div class="side a"><span class="crest sm a">${esc(p.away_tla)}</span><span class="nm">${esc(p.away_team)}</span></div>
+    <div class="pr">${wdlBar(p)}
+      <div class="nums num"><span>${pct(p.home_win)}</span><span>${pct(p.draw)}</span><span>${pct(p.away_win)}</span></div>
+    </div>
+    <div class="go">${CHEVRON}</div>
+  </a>`;
+}
+
+function renderDetail(p) {
+  const list = state.report.predictions;
+  const i = list.indexOf(p);
+  const nav = (q, label, svg) => q
+    ? `<a class="iconbtn" href="${matchHref(q)}" aria-label="${label}" title="${label}: ${esc(q.home_tla)}–${esc(q.away_tla)}">${svg}</a>`
+    : `<span class="iconbtn" aria-disabled="true">${svg}</span>`;
+  $("view-detail").innerHTML = `
+    <div class="dhead">
+      <a class="back" href="#" id="backBtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 3L5 8l5 5"/></svg>경기 목록</a>
+      <span class="ctx">${fmtDay(state.report.date)} · 라운드 ${p.matchday ?? "-"} · ${i + 1} / ${list.length}</span>
+      ${nav(list[i - 1], "이전 경기", '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 3L5 8l5 5"/></svg>')}
+      ${nav(list[i + 1], "다음 경기", CHEVRON)}
+    </div>
+    ${hero(p)}
+    <div class="dgrid">
+      <div class="panel heatbox">${heatmap(p)}</div>
+      <div class="panel">${squad(p.home_team, p.home_squad, "var(--home)")}</div>
+      <div class="panel">${squad(p.away_team, p.away_squad, "var(--away)")}</div>
+    </div>`;
+  $("backBtn").onclick = (e) => {
+    e.preventDefault();
+    history.pushState(null, "", location.pathname);
+    showView("matches");
+  };
+}
+
+function hero(p) {
+  const [cc, cl] = CONF[p.confidence] || CONF.low;
+  const res = resultBadge(p);
+  return `<article class="card hero">
+    <div class="body">
+      <div class="meta">
+        <span class="num">R${p.matchday ?? "-"} · ${fmtTime(p.kickoff)}</span>
+        <span style="display:flex;gap:8px;align-items:center">${res}<span class="badge"><span class="dot" style="background:${cc}"></span>${cl}</span></span>
+      </div>
+      <div class="fixture">
+        <div class="team">
+          <div class="crest h">${esc(p.home_tla)}</div>
+          <div style="min-width:0"><div class="nm">${esc(p.home_team)}</div><div class="fm">${formChips(p.home_squad.form)}</div></div>
+        </div>
+        <div class="score">
+          <div class="big num">${p.predicted_score.replace("-", " : ")}</div>
+          <div class="xg num">xG ${p.home_xg.toFixed(2)} – ${p.away_xg.toFixed(2)}</div>
+        </div>
+        <div class="team away">
+          <div class="crest a">${esc(p.away_tla)}</div>
+          <div style="min-width:0"><div class="nm">${esc(p.away_team)}</div><div class="fm">${formChips(p.away_squad.form)}</div></div>
+        </div>
+      </div>
+      <div class="wdl">
+        ${wdlBar(p)}
+        <div class="lbl num">
+          <i><span class="dot" style="background:var(--home)"></span>홈승 <b>${pct(p.home_win)}</b></i>
+          <i>무 <b>${pct(p.draw)}</b></i>
+          <i>원정승 <b>${pct(p.away_win)}</b><span class="dot" style="background:var(--away)"></span></i>
+        </div>
+      </div>
+      <div class="chips num">
+        <span class="chip" style="border:0;padding-left:0">유력 스코어</span>
+        ${p.top_scores.map(s => `<span class="chip">${s.score} <b>${pct(s.prob)}</b></span>`).join("")}
+        <span class="chip">2.5골 이상 <b>${pct(p.over_2_5)}</b></span>
+        <span class="chip">양팀 득점 <b>${pct(p.btts)}</b></span>
+      </div>
+      ${p.sources && p.sources.length ? `<div class="srcline">일정 출처: ${p.sources.map(esc).join(", ")}${
+        p.actual_score ? ` · 결과 확인: ${(p.confirmed_by || []).map(esc).join(", ")}${(p.confirmed_by || []).length >= 2 ? " (교차 확인)" : ""}` : ""}</div>` : ""}
+    </div>
+  </article>`;
+}
+
+function heatmap(p) {
+  const g = p.score_grid;
+  const max = Math.max(...g.flat());
+  const [ph, pa] = p.predicted_score.split("-").map(Number);
+  let html = `<h4>스코어 확률 (세로: ${esc(p.home_tla)} 득점 · 가로: ${esc(p.away_tla)} 득점)</h4><div class="heat num"><div></div>`;
+  for (let j = 0; j < 6; j++) html += `<div class="ax">${j}</div>`;
+  for (let i = 0; i < 6; i++) {
+    html += `<div class="ax">${i}</div>`;
+    for (let j = 0; j < 6; j++) {
+      const v = g[i][j], a = max ? v / max : 0;
+      const cls = ["c", a > 0.55 ? "dark" : "", i === ph && j === pa ? "pick" : ""].join(" ");
+      html += `<div class="${cls}" style="background:rgba(var(--heat),${(0.06 + a * 0.94).toFixed(3)})" data-tip="${esc(p.home_tla)} ${i} : ${j} ${esc(p.away_tla)} · ${pct(v, 1)}">${v >= 0.01 ? Math.round(v * 100) : ""}</div>`;
+    }
+  }
+  return html + `</div><div class="heat-cap"><span>칸 안 숫자 = 확률(%)</span><span>테두리 = 대표 예측</span></div>`;
+}
+
+function squad(name, s, color) {
+  const f = (v, inv) => {
+    const d = (v - 1) * 100;
+    if (Math.abs(d) < 0.5) return "영향 없음";
+    return (d > 0 ? "+" : "") + d.toFixed(0) + "%";
+  };
+  const missing = (s.missing || []).map(m => `<div class="row"><span>${esc(m.name)}<span class="reason">${esc(m.reason)}</span></span><span class="prob num">출전 ${pct(m.play_prob)}</span></div>`).join("")
+    || (s.has_players === false
+      ? '<div class="row"><span class="muted">선수 데이터 없음</span></div>'
+      : state.report?.data_quality?.injury_data === false
+        ? '<div class="row"><span class="muted">부상 정보 없음 — 무료 출처가 이번 시즌 부상을 제공하지 않음</span></div>'
+        : '<div class="row"><span class="muted">주요 결장 없음</span></div>');
+  const key = (s.key || []).map(k => `<div class="row"><span>${esc(k.name)}</span><span class="r num">${k.goals}골 ${k.assists}도움${k.xg != null ? ` · xG ${k.xg.toFixed(1)}` : ""}</span></div>`).join("")
+    || '<div class="row"><span class="muted">데이터 없음</span></div>';
+  return `<div class="squad">
+    <div class="tname"><span class="sw" style="background:${color}"></span>${esc(name)}</div>
+    <div class="factors num">
+      <div class="factor" data-tip="결장 선수의 득점 기여분만큼 기대득점 조정">공격 보정<b>${f(s.attack_factor)}</b></div>
+      <div class="factor" data-tip="주전 수비수·GK 결장 시 실점 기대치 조정">실점 보정<b>${f(s.defense_factor)}</b></div>
+      <div class="factor">최근 5경기<b>${s.form_ppg.toFixed(2)}점</b></div>
+    </div>
+    <div class="sub">결장 · 불확실</div>${missing}
+    <div class="sub">핵심 선수</div>${key}
+  </div>`;
+}
+
+/* ---------- 팀 전력 ---------- */
+const COLS = [
+  { key: "position", label: "#", cls: "" },
+  { key: "name", label: "팀", cls: "l" },
+  { key: "played", label: "경기" },
+  { key: "won", label: "승" }, { key: "drawn", label: "무" }, { key: "lost", label: "패" },
+  { key: "gd", label: "득실" },
+  { key: "points", label: "승점" },
+  { key: "form", label: "최근 5경기", cls: "l", nosort: true },
+  { key: "attack", label: "공격력" },
+  { key: "defense", label: "수비력" },
+  { key: "rating", label: "종합 전력" },
+];
+
+function meter(v, goodHigh) {
+  const d = Math.max(-0.5, Math.min(0.5, v - 1));
+  const good = goodHigh ? d > 0 : d < 0;
+  const w = Math.abs(d) * 100;
+  const left = d >= 0 ? 50 : 50 - w;
+  return `<span class="meter"><span class="num">${v.toFixed(2)}</span><span class="track"><span class="fill ${good ? "up" : "dn"}" style="left:${left}%;width:${w}%"></span></span></span>`;
+}
+
+function renderTeams(r) {
+  const rows = r.teams.map(t => ({
+    ...t, gd: t.gf - t.ga,
+    attack: (t.attack_home + t.attack_away) / 2,
+    defense: (t.defense_home + t.defense_away) / 2,
+  }));
+  const { key, dir } = state.sort;
+  rows.sort((a, b) => (typeof a[key] === "string" ? a[key].localeCompare(b[key]) : a[key] - b[key]) * dir);
+  const head = COLS.map(c => `<th class="${c.cls ?? ""} ${c.key === key ? "sorted" : ""}" data-k="${c.nosort ? "" : c.key}">${c.label}${c.key === key ? (dir > 0 ? " ↑" : " ↓") : ""}</th>`).join("");
+  const body = rows.map(t => `<tr>
+    <td class="num">${t.position}</td>
+    <td class="l"><span class="tcell"><span class="mini">${esc(t.tla)}</span>${esc(t.name)}${t.promoted ? ' <span class="tag">승격</span>' : ""}</span></td>
+    <td class="num">${t.played}</td><td class="num">${t.won}</td><td class="num">${t.drawn}</td><td class="num">${t.lost}</td>
+    <td class="num">${t.gd > 0 ? "+" : ""}${t.gd}</td>
+    <td class="num"><b>${t.points}</b></td>
+    <td class="l"><span class="fm" style="display:flex;gap:2px">${formChips(t.form)}</span></td>
+    <td data-tip="홈 ${t.attack_home.toFixed(2)} · 원정 ${t.attack_away.toFixed(2)}">${meter(t.attack, true)}</td>
+    <td data-tip="홈 ${t.defense_home.toFixed(2)} · 원정 ${t.defense_away.toFixed(2)} (낮을수록 실점 적음)">${meter(t.defense, false)}</td>
+    <td>${meter(t.rating, true)}</td>
+  </tr>`).join("");
+  $("view-teams").innerHTML = `<div class="panel">
+    <div class="panel-h"><h3>순위 및 팀 전력</h3>
+      <p>1.00 = 리그 평균 · 공격력은 높을수록, 수비력은 낮을수록 강함 · <span style="color:var(--home)">■</span> 평균보다 강함 <span style="color:var(--away)">■</span> 평균보다 약함</p></div>
+    <div class="tablewrap"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>
+  </div>`;
+  $("view-teams").querySelectorAll("th[data-k]").forEach(th => th.onclick = () => {
+    const k = th.dataset.k;
+    if (!k) return;
+    state.sort = { key: k, dir: state.sort.key === k ? -state.sort.dir : (["position", "defense", "name", "lost"].includes(k) ? 1 : -1) };
+    renderTeams(state.report);
+  });
+}
+
+/* ---------- 에이전트 구성 ---------- */
+const AGENTS = {
+  data_collector: ["데이터 수집", "3개 출처에서 팀·경기·선수·부상을 모아 같은 경기·팀·선수끼리 병합"],
+  data_quality: ["데이터 검증", "출처 간 결과 교차 확인, 스코어 불일치·결과 지연·선수 정보 누락 점검"],
+  team_analyst: ["팀 분석", "시간 가중·상대 보정으로 홈/원정 공격력·수비력과 최근 폼 추정"],
+  player_analyst: ["선수 분석", "득점·도움 기여도와 출전 확률로 공격·수비 보정 계수 산출"],
+  predictor: ["스코어 예측", "Dixon-Coles 포아송 모델로 스코어 분포와 승무패 확률 계산"],
+  reporter: ["리포트 발행", "결과를 JSON으로 저장해 웹·외부에서 사용"],
+};
+const PARAMS = {
+  time_decay_xi: ["시간 가중 감쇠", "경기 가중치 = e^(-ξ·경과일)"],
+  shrinkage_games: ["표본 보정 강도", "경기 수가 적을 때 사전값으로 당기는 정도"],
+  form_window: ["폼 계산 경기 수", ""],
+  form_weight: ["폼 최대 영향", "기대득점 ± 비율"],
+  promoted_attack_prior: ["승격팀 공격 사전값", "리그 평균 = 1.0"],
+  promoted_defense_prior: ["승격팀 수비 사전값", "1보다 크면 실점 많음"],
+  absence_attack_impact: ["결장 공격 손실률", "결장 선수 기여분 중 실제 손실"],
+  absence_defense_impact: ["결장 수비 영향", "주전 수비수 1명당 실점 증가"],
+  dixon_coles_rho: ["Dixon-Coles ρ", "저득점 스코어 보정"],
+  max_goals: ["계산 최대 골 수", ""],
+};
+
+function renderAgents(r) {
+  const total = r.agent_log.reduce((s, a) => s + a.seconds, 0);
+  const nodes = r.agent_log.map((a, i) => {
+    const [ko, desc] = AGENTS[a.agent] || [a.agent, a.role];
+    return `<div class="node">
+      <div class="step num"><span>STEP ${i + 1}</span><span>${(a.seconds * 1000).toFixed(0)} ms</span></div>
+      <h4>${esc(ko)}</h4><code>${esc(a.agent)}</code>
+      <div class="desc">${esc(desc)}</div>
+      <div class="out">${esc(a.summary)}</div>
+    </div>`;
+  }).join("");
+  const params = Object.entries(r.model).map(([k, v]) => {
+    const [label, hint] = PARAMS[k] || [k, ""];
+    return `<div>${esc(label)}${hint ? `<small>${esc(hint)}</small>` : ""}</div><div>${esc(v)}</div>`;
+  }).join("");
+  $("view-agents").innerHTML = `
+    <div class="coord">
+      <div class="ic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="4" r="2"/><circle cx="4" cy="16" r="2"/><circle cx="16" cy="16" r="2"/><path d="M10 6v4M10 10l-5 4.3M10 10l5 4.3"/></svg></div>
+      <div><h3>총괄 에이전트 <code style="font-size:12px;opacity:.7">CoordinatorAgent</code></h3>
+        <p>리그·날짜별로 아래 에이전트를 순서대로 실행하고 결과를 캐시합니다. 에이전트끼리는 직접 호출하지 않고 공유 컨텍스트에만 기록합니다.</p></div>
+      <div class="stat num"><b>${(total * 1000).toFixed(0)} ms</b>전체 실행 시간</div>
+    </div>
+    <div class="pipe">${nodes}</div>
+    <div class="grid2">
+      ${sourcesPanel(r)}
+      ${qualityPanel(r)}
+    </div>
+    <div class="grid2">
+      <div class="panel">
+        <div class="panel-h"><h3>이번 분석에 사용된 데이터</h3></div>
+        <div class="kv">
+          <div>학습 경기<small>이번 시즌 + 직전 시즌 종료 경기</small></div><div>${r.training_matches}</div>
+          <div>리그 평균 득점<small>홈 / 원정</small></div><div>${r.league_avg.home.toFixed(2)} / ${r.league_avg.away.toFixed(2)}</div>
+          ${r.reconciliation && r.reconciliation.matches != null ? `
+          <div>이번 시즌 종료 경기<small>병합 후</small></div><div>${r.reconciliation.results} / ${r.reconciliation.matches}</div>
+          <div>2개 이상 출처 일치<small>교차 확인된 결과</small></div><div>${r.reconciliation.confirmed}</div>` : ""}
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-h"><h3>모델 파라미터</h3><p>config.py · ModelConfig</p></div>
+        <div class="kv">${params}</div>
+      </div>
+    </div>`;
+}
+
+const LEVEL = { good: ["✓", "var(--good)", "양호"], warn: ["!", "var(--warn)", "주의"], bad: ["✗", "var(--bad)", "부족"] };
+const levelIcon = (s) => {
+  const [ic, color, label] = LEVEL[s] || LEVEL.warn;
+  return `<span class="lv" style="background:${color}" aria-label="${label}">${ic}</span>`;
+};
+
+function sourcesPanel(r) {
+  if (!r.sources || !r.sources.length) {
+    return `<div class="panel"><div class="panel-h"><h3>데이터 출처</h3><p>${esc(r.data_source)}</p></div></div>`;
+  }
+  const items = r.sources.map(s => {
+    const state = s.ok ? ["good", "사용 중"] : s.enabled ? ["bad", "오류"] : ["warn", "키 없음"];
+    const c = s.counts || {};
+    const counts = s.ok ? `<p class="num">팀 ${c.teams} · 경기 ${c.matches} (결과 ${c.results}) · 직전 시즌 ${c.previous_season} · 선수 ${c.players} · 결장 ${c.injuries}</p>` : "";
+    const notes = (s.notes || []).map(n => `<p class="muted">· ${esc(n)}</p>`).join("");
+    return `<div class="src-item">
+      <h5>${levelIcon(state[0])}${esc(s.name)} <span class="tag">${state[1]}</span></h5>
+      <p>${esc(s.license)}</p>${counts}${s.error ? `<p class="muted">${esc(s.error)}</p>` : ""}${notes}
+      <code>${esc(s.url)}</code>
+    </div>`;
+  }).join("");
+  return `<div class="panel"><div class="panel-h"><h3>데이터 출처</h3><p>우선순위: 위 → 아래</p></div>${items}</div>`;
+}
+
+function qualityPanel(r) {
+  const q = r.data_quality;
+  if (!q || !q.checks) return "";
+  const rows = q.checks.map(c => `<div class="src-item"><h5>${levelIcon(c.status)}${esc(c.label)}</h5><p>${esc(c.detail)}</p></div>`).join("");
+  const conflicts = (q.conflicts || []).map(c =>
+    `<div class="src-item"><p class="num">${esc(c.date)} ${esc(c.home)} – ${esc(c.away)}: ${Object.entries(c.scores).map(([k, v]) => `${esc(k)} ${esc(v)}`).join(" · ")} → <b>${esc(c.chosen)}</b> 채택</p></div>`).join("");
+  return `<div class="panel">
+    <div class="panel-h"><h3>데이터 검증 결과</h3><p>${levelIcon(q.overall)}${LEVEL[q.overall][2]}</p></div>
+    ${rows}${conflicts ? `<div class="src-item"><h5>스코어 불일치 경기</h5></div>${conflicts}` : ""}
+  </div>`;
+}
+
+init();
+</script>
+</body>
+</html>
