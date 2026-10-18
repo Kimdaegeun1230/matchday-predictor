@@ -33,44 +33,61 @@ def score_matrix(lam: float, mu: float, rho: float, max_goals: int) -> list[list
     return [[v / total for v in row] for row in mat]
 
 
-def summarize(mat: list[list[float]]) -> dict:
-    """스코어 확률표 → 승무패·오버·양팀득점 확률, 대표 스코어, 상위 스코어, 0~5골 확률표."""
+def _in(outcome: str, i: int, j: int) -> bool:
+    return (i > j, i == j, i < j)["HDA".index(outcome)]
+
+
+def predicted_outcome(home_win: float, draw: float, away_win: float, cfg: ModelConfig = MODEL) -> str:
+    """예측 결과. 홈승·원정승 확률 차이가 작고 무승부 확률이 충분하면 무승부로 본다.
+    (확률 1위만 고르면 무승부는 거의 1위가 되지 않아, 실제로 30% 가까이 나오는 무승부를 한 번도 예측하지 못함)"""
+    if abs(home_win - away_win) < cfg.draw_gap and draw >= cfg.draw_min:
+        return "D"
+    return max((home_win, "H"), (draw, "D"), (away_win, "A"))[1]
+
+
+def predicted_score(mat: list[list[float]], outcome: str, over_2_5: float) -> str:
+    """대표 스코어: 그 결과가 났을 때의 평균 득점(조건부 기대값)을 반올림.
+    - 승/패: 예) 강팀 홈승이면 홈 3.2골·원정 0.8골 → 3-1. 전력 차이와 득점력이 스코어에 드러난다.
+    - 무승부: 고득점 경기(2.5골 초과 확률 50% 이상)면 2-2, 아니면 0-0 / 1-1 중 확률이 높은 쪽."""
+    n = len(mat)
+    if outcome == "D":
+        if over_2_5 >= 0.5:
+            return "2-2"
+        return "0-0" if mat[0][0] > mat[1][1] else "1-1"
+    sel = [(mat[i][j], i, j) for i in range(n) for j in range(n) if _in(outcome, i, j)]
+    total = sum(p for p, _, _ in sel)
+    # 0.6 이상에서 올림: 0.5 반올림은 3-1 이 지나치게 많아져(시즌 예측의 24%) 평균 총득점이 실제보다 높아짐
+    h = int(sum(p * i for p, i, _ in sel) / total + 0.4)
+    a = int(sum(p * j for p, _, j in sel) / total + 0.4)
+    if outcome == "H" and h <= a:
+        h = a + 1
+    if outcome == "A" and a <= h:
+        a = h + 1
+    return f"{h}-{a}"
+
+
+def summarize(mat: list[list[float]], cfg: ModelConfig = MODEL) -> dict:
+    """스코어 확률표 → 승무패·오버·양팀득점 확률, 대표 스코어, 최빈 스코어, 상위 스코어, 0~5골 확률표."""
     n = len(mat) - 1
     cells = [(mat[i][j], i, j) for i in range(n + 1) for j in range(n + 1)]
     home_win = sum(p for p, i, j in cells if i > j)
     draw = sum(p for p, i, j in cells if i == j)
     away_win = sum(p for p, i, j in cells if i < j)
-    # 가장 가능성 높은 결과(승/무/패) 안에서 최빈 스코어를 대표 예측으로 사용
-    best = max((home_win, "H"), (draw, "D"), (away_win, "A"))[1]
-    in_outcome = [c for c in cells if (c[1] > c[2], c[1] == c[2], c[1] < c[2])["HDA".index(best)]]
-    _, ph, pa = max(in_outcome)
+    over = sum(p for p, i, j in cells if i + j > 2)
+    outcome = predicted_outcome(home_win, draw, away_win, cfg)
+    # 비교용: 그 결과 안에서 확률이 가장 높은 단일 스코어 (1-0, 2-1 같은 저득점에 몰림)
+    _, mh, ma = max(c for c in cells if _in(outcome, c[1], c[2]))
     return {
-        "predicted_score": f"{ph}-{pa}",
+        "predicted_score": predicted_score(mat, outcome, over),
+        "mode_score": f"{mh}-{ma}",
         "home_win": round(home_win, 4),
         "draw": round(draw, 4),
         "away_win": round(away_win, 4),
-        "over_2_5": round(sum(p for p, i, j in cells if i + j > 2), 4),
+        "over_2_5": round(over, 4),
         "btts": round(sum(p for p, i, j in cells if i > 0 and j > 0), 4),
         "top_scores": [{"score": f"{i}-{j}", "prob": round(p, 4)} for p, i, j in sorted(cells, reverse=True)[:5]],
         "score_grid": [[round(mat[i][j], 4) for j in range(6)] for i in range(6)],
     }
-
-
-def xg_score(lam: float, mu: float, outcome: str) -> str:
-    """기대득점을 반올림한 스코어를, 확률이 가장 높은 결과(승/무/패)와 어긋나지 않게 맞춘다.
-    최빈 스코어(1-0, 2-1 등 저득점에 몰림)와 달리 전력 차이가 스코어에 드러난다."""
-    h, a = round(lam), round(mu)
-    if outcome == "H" and h <= a:
-        h = a + 1
-    elif outcome == "A" and a <= h:
-        a = h + 1
-    elif outcome == "D" and h != a:
-        h = a = round((lam + mu) / 2)
-    return f"{h}-{a}"
-
-
-def outcome_of(s: dict) -> str:
-    return max((s["home_win"], "H"), (s["draw"], "D"), (s["away_win"], "A"))[1]
 
 
 def confidence(top_prob: float, min_games: int) -> str:
@@ -132,7 +149,6 @@ class PredictionAgent(Agent):
                 home_xg=round(lam, 2),
                 away_xg=round(mu, 2),
                 **s,
-                xg_score=xg_score(lam, mu, outcome_of(s)),
                 confidence=confidence(max(s["home_win"], s["draw"], s["away_win"]), min_games),
                 home_squad=self._squad(ctx, m.home.id),
                 away_squad=self._squad(ctx, m.away.id),

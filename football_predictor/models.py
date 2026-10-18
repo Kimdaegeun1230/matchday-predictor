@@ -95,8 +95,8 @@ class Prediction:
     actual_score: Optional[str]  # 이미 끝난 경기의 실제 스코어
     home_xg: float
     away_xg: float
-    predicted_score: str        # 최빈 스코어 (가장 유력한 결과 안에서 확률이 가장 높은 스코어)
-    xg_score: str               # 기대득점 기준 스코어 (반올림, 결과와 일치하게 보정)
+    predicted_score: str        # 대표 스코어 (예측 결과가 났을 때의 평균 득점, 무승부는 0-0/1-1/2-2)
+    mode_score: str             # 최빈 스코어 (예측 결과 안에서 확률이 가장 높은 단일 스코어, 비교용)
     home_win: float
     draw: float
     away_win: float

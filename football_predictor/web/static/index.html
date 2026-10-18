@@ -690,7 +690,7 @@ function hero(p) {
         ${p.top_scores.map(s => `<span class="chip">${s.score} <b>${pct(s.prob)}</b></span>`).join("")}
         <span class="chip">2.5골 이상 <b>${pct(p.over_2_5)}</b></span>
         <span class="chip">양팀 득점 <b>${pct(p.btts)}</b></span>
-        ${p.xg_score ? `<span class="chip" data-tip="기대득점(xG)을 반올림한 스코어 — 전력 차이가 드러나는 대안 예측">기대득점 기준 <b>${esc(p.xg_score)}</b></span>` : ""}
+        ${p.mode_score && p.mode_score !== p.predicted_score ? `<span class="chip" data-tip="예측 결과 안에서 확률이 가장 높은 단일 스코어 (저득점에 몰리는 경향)">최빈 스코어 <b>${esc(p.mode_score)}</b></span>` : ""}
       </div>
       ${p.sources && p.sources.length ? `<div class="srcline">일정 출처: ${p.sources.map(esc).join(", ")}${
         p.actual_score ? ` · 결과 확인: ${(p.confirmed_by || []).map(esc).join(", ")}${(p.confirmed_by || []).length >= 2 ? " (교차 확인)" : ""}` : ""}</div>` : ""}
@@ -830,10 +830,10 @@ function renderAccuracy(acc) {
       const mark = !done ? '<span class="muted">예정</span>'
         : i.outcome_hit ? '<span class="hit">✓ 결과 적중</span>' : '<span class="miss">✗ 결과 빗나감</span>';
       const ex = done ? [i.exact_hit ? '<span class="hit">최빈 스코어 적중</span>' : "",
-                         i.xg_exact_hit ? '<span class="hit">xG 스코어 적중</span>' : ""].filter(Boolean).join(" · ") : "";
+                         i.mode_exact_hit && !i.exact_hit ? '<span class="muted">최빈 스코어였다면 적중</span>' : ""].filter(Boolean).join(" · ") : "";
       return `<tr><td class="l num">${esc(i.date.slice(5))}</td>
         <td class="l">${esc(i.home)} – ${esc(i.away)}${i.media_count ? ` <span class="tag">매체 ${i.media_count}</span>` : ""}</td>
-        <td class="num">${esc(i.predicted)}</td><td class="num">${esc(i.xg_predicted || "-")}</td>
+        <td class="num"><b>${esc(i.predicted)}</b></td><td class="num muted">${esc(i.mode_predicted || "-")}</td>
         <td class="num"><b>${done ? esc(i.actual) : "-"}</b></td><td class="l">${mark}${ex ? ` <small>${ex}</small>` : ""}</td></tr>`;
     }).join("");
     return `<details class="round" ${r.matchday === acc.latest_complete_round ? "open" : ""}>
@@ -842,17 +842,17 @@ function renderAccuracy(acc) {
         <span class="muted rdate">${esc(r.first_date.slice(5))}${r.first_date !== r.last_date ? " ~ " + esc(r.last_date.slice(5)) : ""}</span>
         ${state}
         <span class="rs">결과 <b class="num">${r.outcome_hits}/${r.finished}</b> ${rateBar(r.outcome_rate, "var(--home)")} <span class="num">${pr(r.outcome_rate)}</span></span>
-        <span class="rs">스코어 <b class="num">${r.exact_hits}/${r.finished}</b> <span class="num muted">(xG ${r.xg_exact_hits})</span></span>
+        <span class="rs">스코어 <b class="num">${r.exact_hits}/${r.finished}</b> <span class="num muted">(최빈 ${r.mode_exact_hits})</span></span>
       </summary>
-      <div class="tablewrap"><table><thead><tr><th class="l">날짜</th><th class="l">경기</th><th>최빈 예측</th><th>xG 예측</th><th>실제</th><th class="l">판정</th></tr></thead>
+      <div class="tablewrap"><table><thead><tr><th class="l">날짜</th><th class="l">경기</th><th>예측</th><th>최빈</th><th>실제</th><th class="l">판정</th></tr></thead>
       <tbody>${items}</tbody></table></div>
     </details>`;
   }).join("");
   $("view-accuracy").innerHTML = `
     <div class="tiles">
       ${tile("결과 적중률 (승·무·패)", pr(s.outcome_rate), `${s.outcome_hits} / ${s.finished}경기`)}
-      ${tile("스코어 적중률 (최빈 스코어)", pr(s.exact_rate), `${s.exact_hits} / ${s.finished}경기`)}
-      ${tile("스코어 적중률 (xG 스코어)", pr(s.xg_exact_rate), `${s.xg_exact_hits} / ${s.finished}경기`)}
+      ${tile("스코어 적중률", pr(s.exact_rate), `${s.exact_hits} / ${s.finished}경기`)}
+      ${tile("비교: 최빈 스코어였다면", pr(s.mode_exact_rate), `${s.mode_exact_hits} / ${s.finished}경기`)}
       ${media}
     </div>
     <p class="muted acc-note">각 경기일에 <b>그날 이전 데이터만으로</b> 만든 예측을 실제 결과와 비교합니다. 라운드의 모든 경기가 끝나면 '완료'로 표시됩니다.

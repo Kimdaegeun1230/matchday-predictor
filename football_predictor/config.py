@@ -68,6 +68,8 @@ class ModelConfig:
     absence_defense_impact: float = 0.04 # 주전 수비/GK 1명 결장 시 실점 증가율
     # 예측
     dixon_coles_rho: float = -0.10    # 저득점(0-0, 1-0, 0-1, 1-1) 보정 계수
+    draw_gap: float = 0.10            # 홈승·원정승 확률 차이가 이보다 작고
+    draw_min: float = 0.25            # 무승부 확률이 이 이상이면 무승부로 예측
     max_goals: int = 10
 
 
