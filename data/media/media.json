@@ -285,6 +285,32 @@
    "url": "https://www.skysports.com/football/news/13598732/premier-league-predictions-and-jones-knows-best-bets-brentford-vs-liverpool-leeds-vs-manchester-united-and-more",
    "headline": "Premier League predictions & Jones Knows' best bets",
    "collected_at": "2026-10-18T15:06:19+00:00"
+  },
+  {
+   "fixture_id": "987385906",
+   "home": "Bournemouth",
+   "away": "Sunderland",
+   "kickoff": "2026-10-18T13:00+00:00",
+   "outlet": "Sports Mole",
+   "author": "Ben Sully",
+   "home_goals": 2,
+   "away_goals": 2,
+   "url": "https://www.sportsmole.co.uk/football/bournemouth/preview/bournemouth-vs-sunderland-prediction-team-news-lineups_607069.html",
+   "headline": "Preview: Bournemouth vs Sunderland - prediction, team news, lineups",
+   "collected_at": "2026-10-19T09:12:27+00:00"
+  },
+  {
+   "fixture_id": "987385906",
+   "home": "Bournemouth",
+   "away": "Sunderland",
+   "kickoff": "2026-10-18T13:00+00:00",
+   "outlet": "Sports Mole",
+   "author": "Ben Knapton",
+   "home_goals": 2,
+   "away_goals": 2,
+   "url": "https://www.sportsmole.co.uk/football/man-utd/premier-league-predictions/feature/carricks-man-utd-to-crumble-at-leeds-sundays-premier-league-predictions_607104.html",
+   "headline": "Sunday's Premier League predictions including Leeds vs. Man Utd, Nottingham Forest vs. Arsenal",
+   "collected_at": "2026-10-19T09:12:27+00:00"
   }
  ],
  "collected": {
@@ -306,6 +332,7 @@
   "710748940": "2026-10-18T15:06:19+00:00",
   "257400684": "2026-10-18T15:06:19+00:00",
   "1169333091": "2026-10-18T15:06:19+00:00",
-  "357650211": "2026-10-18T15:06:19+00:00"
+  "357650211": "2026-10-18T15:06:19+00:00",
+  "987385906": "2026-10-19T09:12:27+00:00"
  }
 }
