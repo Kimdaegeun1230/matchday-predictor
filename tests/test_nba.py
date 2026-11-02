@@ -126,6 +126,23 @@ class NbaModelTest(unittest.TestCase):
         self.assertIsNotNone(s["mean_abs_err"])
         self.assertLess(s["mean_abs_err"], 15)
 
+    def test_media_import_checks_nba_outlets_and_scores(self):
+        from football_predictor.media.manual import import_found
+        with tempfile.TemporaryDirectory() as tmp:
+            due, found, store = Path(tmp) / "due.json", Path(tmp) / "found.json", Path(tmp) / "nba_media.json"
+            due.write_text(json.dumps({"sport": "nba", "fixtures": [
+                {"fixture_id": "9002", "home": "Los Angeles Lakers", "away": "New York Knicks", "kickoff_utc": ""}]}),
+                encoding="utf-8")
+            found.write_text(json.dumps([
+                {"fixture_id": "9002", "outlet": "Covers", "author": "A", "home_goals": 112, "away_goals": 108,
+                 "url": "https://www.covers.com/nba/x"},
+                {"fixture_id": "9002", "outlet": "BBC", "author": "B", "home_goals": 110, "away_goals": 100,
+                 "url": "https://www.bbc.co.uk/sport/x"},                       # 허용 매체 아님
+                {"fixture_id": "9002", "outlet": "Pickswise", "author": "C", "home_goals": 2, "away_goals": 1,
+                 "url": "https://www.pickswise.com/x"}]), encoding="utf-8")   # 농구 점수 범위 밖
+            r = import_found(due, found, store)
+            self.assertEqual((r["accepted"], r["rejected"]), (1, 2))
+
 
 if __name__ == "__main__":
     unittest.main()

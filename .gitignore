@@ -8,3 +8,4 @@ output/
 site/
 __pycache__/
 *.pyc
+!data/media/nba_media.json

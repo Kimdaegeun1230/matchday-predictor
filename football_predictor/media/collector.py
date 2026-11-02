@@ -70,9 +70,9 @@ def _record_tool(fixture_ids: list[str]) -> dict:
     }
 
 
-def _allowed(url: str) -> bool:
+def _allowed(url: str, domains: list[str] = MEDIA_DOMAINS) -> bool:
     host = (urlparse(url).hostname or "").lower()
-    return any(host == d or host.endswith("." + d) for d in MEDIA_DOMAINS)
+    return any(host == d or host.endswith("." + d) for d in domains)
 
 
 class MediaCollector:
@@ -148,7 +148,8 @@ class MediaCollector:
         self.usage["web_searches"] += (getattr(server, "web_search_requests", 0) or 0) if server else 0
 
     @staticmethod
-    def _clean(payload: dict, fixtures: list[dict]) -> list[dict]:
+    def _clean(payload: dict, fixtures: list[dict], domains: list[str] = MEDIA_DOMAINS,
+               score_range: tuple[int, int] = (0, 12)) -> list[dict]:
         by_id = {f["id"]: f for f in fixtures}
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")
         out, seen = [], set()
@@ -156,9 +157,9 @@ class MediaCollector:
             f = by_id.get(str(p.get("fixture_id")))
             hg, ag = p.get("home_goals"), p.get("away_goals")
             url = str(p.get("url", ""))
-            if not f or not isinstance(hg, int) or not isinstance(ag, int) or not (0 <= hg <= 12 and 0 <= ag <= 12):
+            if not f or not isinstance(hg, int) or not isinstance(ag, int) or not (score_range[0] <= hg <= score_range[1] and score_range[0] <= ag <= score_range[1]):
                 continue
-            if not _allowed(url):  # 허용 매체가 아닌 링크는 버림
+            if not _allowed(url, domains):  # 허용 매체가 아닌 링크는 버림
                 continue
             outlet = str(p.get("outlet", "")).strip() or urlparse(url).hostname
             author = str(p.get("author", "")).strip() or outlet

@@ -99,6 +99,11 @@ MEDIA_DOMAINS = [
     "givemesport.com", "90min.com", "teamtalk.com", "thesportsman.com", "goal.com",
 ]
 
+# NBA: AI 접근을 허용하는 미국 매체만. Sporting News, USA Today 는 차단(2026-11 확인), Dimers 는 기사 아닌 모델이라 제외.
+NBA_MEDIA_DOMAINS = [
+    "sports.yahoo.com", "covers.com", "pickswise.com", "si.com", "cbssports.com", "espn.com",
+]
+
 
 @dataclass(frozen=True)
 class MediaConfig:

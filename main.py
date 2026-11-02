@@ -125,8 +125,9 @@ def main(argv: list[str] | None = None) -> int:
     m.add_argument("--max-calls", type=int, default=None, help="이번 실행의 Claude 호출 상한")
 
     d = sub.add_parser("media-due", help="매체 예측을 수집할 경기 목록을 JSON 으로 내보내기 (예약 실행용)")
-    d.add_argument("--out", default="data/media/due.json")
-    d.add_argument("--max-days", type=int, default=4, help="한 번에 다룰 경기 날짜 수")
+    d.add_argument("--league", default="EPL", help="EPL 또는 NBA")
+    d.add_argument("--out", default=None, help="기본: data/media/due.json (NBA 는 nba_due.json)")
+    d.add_argument("--max-days", type=int, default=None, help="한 번에 다룰 경기 날짜 수 (기본: EPL 4, NBA 1)")
 
     i = sub.add_parser("media-import", help="찾은 매체 예측(JSON)을 검사해 기록에 합치기 (예약 실행용)")
     i.add_argument("found", help="찾은 예측 JSON 파일")
@@ -176,8 +177,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "media-due":
         from pathlib import Path
         from football_predictor.media.manual import export_due
-        r = export_due(CoordinatorAgent(write_files=False), "EPL", Path(args.out), args.max_days)
-        print(f"수집할 경기 {r['fixtures']}개 ({r['days']}일치) → {args.out}")
+        league = args.league.upper()
+        out = args.out or ("data/media/nba_due.json" if league == "NBA" else "data/media/due.json")
+        max_days = args.max_days if args.max_days is not None else (1 if league == "NBA" else 4)
+        r = export_due(CoordinatorAgent(write_files=False), league, Path(out), max_days)
+        print(f"수집할 경기 {r['fixtures']}개 ({r['days']}일치) → {out}")
         return 0
 
     if args.cmd == "media-import":
