@@ -1,12 +1,13 @@
 """NBA 파이프라인: 가짜 경기·부상 데이터로 모델·부상·매체·적중률을 네트워크 없이 검증."""
 import json
+import math
 import random
 import tempfile
 import unittest
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from football_predictor.config import ALL_LEAGUES
+from football_predictor.config import ALL_LEAGUES, NBA
 from football_predictor.nba.engine import NbaEngine, margin_buckets, predicted_score
 from football_predictor.nba.evaluation import nba_accuracy
 from football_predictor.nba.sources import NbaGame, NbaInjury, NbaTeam, season_of
@@ -86,7 +87,8 @@ class NbaModelTest(unittest.TestCase):
         star = NbaInjury("celtics", "Star Player", "Out", 0.0, "knee", ppg=28.0, mpg=35, games_played=55)
         bench = NbaInjury("celtics", "Bench Player", "Out", 0.0, "ankle", ppg=3.0, mpg=8, games_played=3)
         hurt = {x["match_id"]: x for x in engine([star, bench]).predict(TODAY)["predictions"]}[9001]
-        self.assertAlmostEqual(base["home_xg"] - hurt["home_xg"], 28.0 * 0.6, delta=0.2)  # 벤치(출전 적음)는 제외
+        raw = 28.0 * NBA.injury_replacement                               # 벤치(출전 적음)는 제외
+        self.assertAlmostEqual(base["home_xg"] - hurt["home_xg"], NBA.injury_cap * (1 - math.exp(-raw / NBA.injury_cap)), delta=0.2)
         self.assertLess(hurt["home_win"], base["home_win"])
         missing = hurt["home_squad"]["missing"]
         self.assertEqual(missing[0]["name"], "Star Player")

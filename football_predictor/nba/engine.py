@@ -196,6 +196,14 @@ class NbaInjuryAgent(Agent):
                 "name": inj.player, "status": inj.status, "play_prob": inj.play_prob, "ppg": round(inj.ppg, 1),
                 "mpg": round(inj.mpg, 1), "reason": inj.detail, "counted": regular, "loss": round(loss, 1)})
             total += 1
+        # 결장 손실을 그냥 더하면 주전 여럿이 빠진 팀이 50점씩 깎임 → 상한 쪽으로 완만하게 포화
+        cap = self.cfg.injury_cap
+        for t, raw in ctx.injury_loss.items():
+            if raw > 0:
+                scale = cap * (1 - math.exp(-raw / cap)) / raw
+                ctx.injury_loss[t] = raw * scale
+                for m in ctx.missing.get(t, []):
+                    m["loss"] = round(m["loss"] * scale, 1)
         for t in ctx.missing:
             ctx.missing[t].sort(key=lambda m: -m["loss"])
         return f"경기 팀 {len(teams)}곳, 결장·불확실 {total}명 반영"

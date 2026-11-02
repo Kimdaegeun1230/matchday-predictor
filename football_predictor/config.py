@@ -131,7 +131,8 @@ class NbaConfig:
     iterations: int = 40
     margin_sd_default: float = 12.5   # 점수차 표준편차 기본값 (데이터로 다시 추정)
     back_to_back_penalty: float = 1.5 # 전날도 경기한 팀의 득점 감소
-    injury_replacement: float = 0.6   # 결장 선수 평균 득점 중 실제로 잃는 비율 (나머지는 대체 선수가 메움)
+    injury_replacement: float = 0.35   # 결장 선수 평균 득점 중 실제로 잃는 비율 (나머지는 대체 선수가 메움)
+    injury_cap: float = 9.0             # 한 팀 결장 손실 상한(완만하게 포화) — 남은 선수가 공을 더 잡음
     injury_regular_share: float = 0.5 # 팀 경기의 이 비율 이상 뛴 선수만 결장 영향 반영 (오래 빠진 선수는 이미 성적에 반영됨)
     injury_window_days: int = 3       # 오늘 기준 이 기간 안의 경기에만 현재 부상 정보 적용
     request_interval: float = 12.5    # balldontlie 무료 등급: 분당 5회

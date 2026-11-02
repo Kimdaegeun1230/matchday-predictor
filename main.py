@@ -97,6 +97,8 @@ def check_sources() -> int:
             for n in s["notes"]:
                 print(f"       참고: {n}")
         r = status["reconciliation"]
+        if not r:
+            continue
         print(f"\n병합: 이번 시즌 {r['matches']}경기, 결과 {r['results']} "
               f"(교차 확인 {r['confirmed']}, 단일 출처 {r['single_source']}, 불일치 {len(r['conflicts'])})")
         for c in r["conflicts"][:10]:
