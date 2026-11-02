@@ -2,7 +2,10 @@ import unittest
 from collections import Counter
 
 from football_predictor.agents.prediction_agent import predicted_outcome, score_matrix, summarize
+from football_predictor.config import ModelConfig
 from football_predictor.evaluation import round_accuracy
+
+POOL5 = ModelConfig(score_pool=5)
 
 
 def p(mid, md, pred, actual, mode=None, media=None, probs=(0.5, 0.3, 0.2)):
@@ -24,7 +27,7 @@ class ScoreVarietyTest(unittest.TestCase):
 
     def test_score_agrees_with_outcome_and_varies(self):
         mat = score_matrix(2.2, 0.8, -0.1, 10)  # 홈 강세
-        scores = Counter(summarize(mat, seed=s)["predicted_score"] for s in range(400))
+        scores = Counter(summarize(mat, POOL5, seed=s)["predicted_score"] for s in range(400))
         self.assertTrue(all(oc(s) == "H" for s in scores))
         self.assertLessEqual(len(scores), 5)            # 상위 5개 안에서만
         self.assertGreaterEqual(len(scores), 4)
@@ -36,15 +39,18 @@ class ScoreVarietyTest(unittest.TestCase):
     def test_close_match_predicts_draw(self):
         self.assertEqual(predicted_outcome(0.36, 0.30, 0.34), "D")
         self.assertEqual(predicted_outcome(0.45, 0.27, 0.28), "H")
-        draws = Counter(summarize(score_matrix(1.2, 1.15, -0.1, 10), seed=s)["predicted_score"] for s in range(200))
+        draws = Counter(summarize(score_matrix(1.2, 1.15, -0.1, 10), POOL5, seed=s)["predicted_score"] for s in range(200))
         self.assertTrue(all(oc(s) == "D" for s in draws))
         self.assertGreaterEqual(len(draws), 3)          # 0-0, 1-1, 2-2 …
 
-    def test_pool_one_is_mode(self):
-        from football_predictor.config import ModelConfig
-        mat = score_matrix(2.2, 0.8, -0.1, 10)
-        s = summarize(mat, ModelConfig(score_pool=1), seed=7)
+    def test_default_is_top_score_within_predicted_result(self):
+        mat = score_matrix(1.6, 1.2, -0.1, 10)   # 홈 우세지만 단일 스코어 1위는 1-1 인 경기
+        s = summarize(mat, seed=7)
+        top_overall = s["top_scores"][0]["score"]
         self.assertEqual(s["predicted_score"], s["mode_score"])
+        self.assertEqual(oc(s["predicted_score"]), "H")          # 승무패 예측과 일치
+        if oc(top_overall) == "D":
+            self.assertNotEqual(s["predicted_score"], top_overall)
 
 
 class RoundAccuracyTest(unittest.TestCase):

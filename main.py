@@ -80,17 +80,18 @@ def check_sources() -> int:
     for key in LEAGUES:
         try:
             status = coordinator.source_status(key, date.today())
-        except Exception as exc:  # 모든 출처 실패
-            print(f"{key}: 실패 — {exc}")
-            return 1
+        except Exception as exc:  # 모든 출처 실패 (다른 리그는 계속 점검)
+            print(f"\n=== {key} 데이터 출처 ===\n실패 — {exc}")
+            continue
         print(f"\n=== {key} 데이터 출처 ===")
         for s in status["sources"]:
             mark = "OK " if s["ok"] else ("-- " if not s["enabled"] else "ERR")
             print(f"[{mark}] {s['name']:<20} {s['license']}")
             if s["ok"]:
                 c = s["counts"]
-                print(f"       팀 {c['teams']} · 경기 {c['matches']} (결과 {c['results']}) · 직전 시즌 {c['previous_season']}"
-                      f" · 선수 {c['players']} · 결장/불확실 {c['injuries']}")
+                labels = {"teams": "팀", "matches": "경기", "results": "결과", "previous_season": "직전 시즌",
+                          "players": "선수", "injuries": "결장/불확실"}
+                print("       " + " · ".join(f"{labels.get(k, k)} {v}" for k, v in c.items()))
             if s["error"]:
                 print(f"       {s['error']}")
             for n in s["notes"]:
@@ -193,7 +194,10 @@ def main(argv: list[str] | None = None) -> int:
         from football_predictor.web.build import build_site
         summary = build_site(Path(args.out), args.source, args.domain or None)
         for key, s in summary["leagues"].items():
-            print(f"{key}: 경기일 {s['dates']}개, 경기 {s['matches']}개")
+            if "error" in s:
+                print(f"{key}: 건너뜀 — {s['error']}")
+            else:
+                print(f"{key}: 경기일 {s['dates']}개, 경기 {s['matches']}개")
         print(f"빌드 완료: {args.out}/ ({summary['seconds']}s)")
         return 0
 

@@ -44,7 +44,7 @@ def make_handler(coordinator: CoordinatorAgent):
                 if url.path in ("/", "/index.html"):
                     self._send(200, (STATIC_DIR / "index.html").read_bytes(), "text/html; charset=utf-8")
                 elif url.path == "/api/leagues":
-                    self._json(200, [{"key": l.key, "name": l.name, "country": l.country} for l in LEAGUES.values()])
+                    self._json(200, [{"key": l.key, "name": l.name, "country": l.country, "sport": l.sport} for l in LEAGUES.values()])
                 elif url.path == "/api/calendar":
                     self._json(200, coordinator.match_calendar(q.get("league", "EPL"), date.today()))
                 elif url.path == "/api/accuracy":

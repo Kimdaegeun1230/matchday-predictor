@@ -291,6 +291,7 @@ class ApiFootballSource(Source):
     license = "무료 플랜 이용약관 (키 필요, 하루 100회)"
     attribution = "Data provided by API-Football (api-sports.io)"
     needs_key = True
+    today = staticmethod(date.today)  # 테스트에서 기준일 고정용
 
     def __init__(self, api_key: str = API_FOOTBALL_KEY, ttl: int = CACHE_TTL_SECONDS):
         super().__init__(ttl)
@@ -373,7 +374,7 @@ class ApiFootballSource(Source):
                 sd.notes.append(f"{label} 순위 미제공: {exc}")
 
         # 부상 정보는 다가오는 경기에만 의미가 있고, 날짜마다 요청하면 하루 100회 한도를 넘기므로 가까운 날짜만 조회
-        if not -1 <= (as_of - date.today()).days <= 10:
+        if not -1 <= (as_of - self.today()).days <= 10:
             return sd
         try:
             injuries = self._get(f"/injuries?league={lid}&season={start}&date={as_of.isoformat()}")

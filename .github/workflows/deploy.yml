@@ -3,6 +3,7 @@
 # 필요한 설정 (저장소 Settings):
 #   Secrets and variables → Actions → Repository secrets :
 #     FOOTBALL_DATA_API_KEY (또는 FOOTBALLDATAAPIKEY), API_FOOTBALL_KEY (또는 APIFOOTBALLKEY),
+#     BALLDONTLIE_API_KEY (또는 BALLDONTLIEAPIKEY) — NBA 경기·결과, 없으면 NBA 만 건너뜀
 #     ANTHROPIC_API_KEY (또는 ANTHROPICAPIKEY) — 현지 매체 예측 수집용, 없으면 그 단계만 건너뜀
 #   Secrets and variables → Actions → Variables: SITE_DOMAIN (예: matchdaypredictor.com, 없으면 생략)
 #   Pages → Build and deployment → Source: GitHub Actions
@@ -31,6 +32,7 @@ jobs:
     env:
       FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY || secrets.FOOTBALLDATAAPIKEY }}
       API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY || secrets.APIFOOTBALLKEY }}
+      BALLDONTLIE_API_KEY: ${{ secrets.BALLDONTLIE_API_KEY || secrets.BALLDONTLIEAPIKEY }}
     steps:
       - uses: actions/checkout@v7
 

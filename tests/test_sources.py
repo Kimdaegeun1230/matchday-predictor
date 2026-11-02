@@ -139,6 +139,7 @@ def provider(fd=True, af=True, fpl=False):
         sources.ApiFootballSource(api_key="af-key" if af else ""),
         sources.OpenFootballSource(),
     ]
+    srcs[1].today = lambda: TODAY  # 부상 조회는 '오늘' 근처 날짜만 → 테스트 기준일로 고정
     if fpl:
         srcs.append(sources.FplInjurySource())
     return MultiSourceProvider(srcs, memo_seconds=0)

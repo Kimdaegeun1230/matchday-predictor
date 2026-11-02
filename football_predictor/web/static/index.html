@@ -233,6 +233,13 @@
   .pbar { display: inline-block; width: 80px; height: 6px; background: var(--grid); border-radius: 3px; overflow: hidden; }
   .pbar span { display: block; height: 100%; border-radius: 3px; }
   @media (max-width: 900px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
+  .lgsw { display: flex; gap: 2px; border: 1px solid var(--border); border-radius: 999px; padding: 2px; }
+  .lgsw button { border: 0; background: transparent; color: var(--muted); padding: 3px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  .lgsw button[aria-selected="true"] { background: var(--ink); color: var(--surface); }
+  .mbars { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; align-items: end; height: 120px; margin-top: 8px; }
+  .mbars div { background: var(--home); border-radius: 4px 4px 0 0; min-height: 2px; }
+  .mbars div.aw { background: var(--away); }
+  .mlabels { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; font-size: 10px; color: var(--muted); text-align: center; margin-top: 4px; }
   .panel.media { grid-column: 1 / -1; }
   .mws { display: grid; gap: 8px; margin-bottom: 12px; max-width: 560px; }
   .mw { display: grid; grid-template-columns: 72px 1fr auto; gap: 10px; align-items: center; font-size: 12px; }
@@ -301,7 +308,7 @@
     .hero .crest { width: 40px; height: 40px; font-size: 11px; }
     .hero .team .nm { font-size: 14px; }
     .brand { white-space: nowrap; }
-    #leaguePill { display: none; }
+    .lgsw button { padding: 4px 9px; font-size: 12px; }
     .score .big { font-size: 24px; }
     .fixture { align-items: start; gap: 8px; }
     .team, .team.away { flex-direction: column; text-align: center; gap: 6px; }
@@ -323,7 +330,7 @@
       </svg>
       Matchday Predictor
     </div>
-    <span class="pill" id="leaguePill">Premier League</span>
+    <div class="lgsw" id="leagueSwitch" role="tablist" aria-label="리그"></div>
     <div class="spacer"></div>
     <span class="src" id="src"></span>
     <button class="iconbtn" id="themeBtn" aria-label="테마 전환" title="테마 전환"></button>
@@ -362,15 +369,18 @@
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const pct = (x, d = 0) => (x * 100).toFixed(d) + "%";
-const LEAGUE = "EPL";
+let LEAGUE = "EPL";
+try { LEAGUE = localStorage.getItem("mp-league") || "EPL"; } catch (e) {}
+const isNba = () => (state.report?.sport || state.leagueSport) === "nba";
 /* 정적 사이트(main.py build)면 미리 만든 JSON 파일을, 아니면 로컬 서버 API를 읽는다 */
 const STATIC = !!window.MP_STATIC;
 const API = {
   calendar: (l) => STATIC ? `data/${l}/calendar.json` : `/api/calendar?league=${l}`,
   predictions: (l, d) => STATIC ? `data/${l}/predictions/${d}.json` : `/api/predictions?league=${l}&date=${d}`,
   accuracy: (l) => STATIC ? `data/${l}/accuracy.json` : `/api/accuracy?league=${l}`,
+  leagues: () => STATIC ? "data/leagues.json" : "/api/leagues",
 };
-const state = { report: null, calendar: [], view: "matches", sort: { key: "position", dir: 1 } };
+const state = { report: null, calendar: [], view: "matches", sort: { key: "position", dir: 1 }, leagues: [], leagueSport: "football" };
 
 /* ---------- 테마 ---------- */
 const THEMES = ["auto", "light", "dark"];
@@ -441,14 +451,19 @@ document.querySelector("nav.views").onclick = (e) => {
 };
 
 /* 상세 화면 주소: #/match/<날짜>/<경기 id> → 새로고침·뒤로가기·링크 공유가 그대로 동작 */
-const matchHref = (p) => `#/match/${state.report.date}/${p.match_id}`;
+const matchHref = (p) => `#/match/${LEAGUE}/${state.report.date}/${p.match_id}`;
 async function route() {
-  const m = location.hash.match(/^#\/match\/(\d{4}-\d{2}-\d{2})\/(-?\d+)$/);
+  const m = location.hash.match(/^#\/match\/(?:([A-Z]+)\/)?(\d{4}-\d{2}-\d{2})\/(-?\d+)$/);
   if (!m) {
     if (state.view === "detail") showView("matches");
     return;
   }
-  const [, date, id] = m;
+  const [, lg, date, id] = m;
+  if (lg && lg !== LEAGUE && state.leagues.some(l => l.key === lg)) {
+    setLeague(lg);
+    await loadCalendar();
+    state.report = null;
+  }
   if (!state.report || state.report.date !== date) {
     $("date").value = date;
     await load({ routeAfter: false });
@@ -470,13 +485,45 @@ async function init() {
   $("dayTitle").textContent = "경기 일정 불러오는 중…";
   $("matchList").innerHTML = '<div class="skel"></div>';
   try {
+    state.leagues = await fetch(API.leagues()).then(r => r.json());
+  } catch (e) { state.leagues = [{ key: "EPL", name: "Premier League", sport: "football" }]; }
+  if (!state.leagues.some(l => l.key === LEAGUE)) LEAGUE = state.leagues[0]?.key || "EPL";
+  setLeague(LEAGUE);
+  await loadCalendar();
+  if (location.hash) route(); else load();
+}
+
+const LEAGUE_LABEL = { EPL: "프리미어리그", NBA: "NBA" };
+function setLeague(key) {
+  LEAGUE = key;
+  state.leagueSport = (state.leagues.find(l => l.key === key) || {}).sport || "football";
+  try { localStorage.setItem("mp-league", key); } catch (e) {}
+  $("leagueSwitch").innerHTML = state.leagues.map(l =>
+    `<button role="tab" data-league="${esc(l.key)}" aria-selected="${l.key === key}">${esc(LEAGUE_LABEL[l.key] || l.name)}</button>`).join("");
+}
+async function loadCalendar() {
+  $("date").value = new Date().toISOString().slice(0, 10);
+  try {
     const cal = await fetch(API.calendar(LEAGUE)).then(r => r.json());
     state.calendar = Array.isArray(cal) ? cal : [];
     const next = nextMatchDate(state.calendar, $("date").value);
     if (next) $("date").value = next;
-  } catch (e) {}
-  if (location.hash) route(); else load();
+  } catch (e) { state.calendar = []; }
 }
+$("leagueSwitch").onclick = async (e) => {
+  const b = e.target.closest("button[data-league]");
+  if (!b || b.dataset.league === LEAGUE) return;
+  setLeague(b.dataset.league);
+  if (location.hash) history.replaceState(null, "", location.pathname);
+  state.report = null;
+  accuracyLoaded = false;
+  $("view-accuracy").innerHTML = '<div class="empty">적중률 계산 중…</div>';
+  $("matchList").innerHTML = '<div class="skel"></div>';
+  if (state.view === "detail") showView("matches");
+  await loadCalendar();
+  await load();
+  if (state.view === "accuracy") loadAccuracy();
+};
 
 /* 오늘 이후 아직 끝나지 않은 경기가 있는 첫 날짜 (없으면 마지막 경기일) */
 function nextMatchDate(calendar, today) {
@@ -489,7 +536,7 @@ async function load({ routeAfter = true } = {}) {
   const date = $("date").value;
   const cal = state.calendar.find(d => d.date === date);
   $("dayTitle").textContent = fmtDay(date);
-  $("daySub").textContent = cal ? `라운드 ${cal.matchday ?? "-"} · ${cal.matches}경기` : "경기 없음";
+  $("daySub").textContent = cal ? `${cal.matchday ? `라운드 ${cal.matchday} · ` : ""}${cal.matches}경기` : "경기 없음";
   const dates = state.calendar.map(d => d.date);
   $("prevDay").disabled = !dates.some(d => d < date);
   $("nextDay").disabled = !dates.some(d => d > date);
@@ -514,7 +561,6 @@ async function load({ routeAfter = true } = {}) {
 function render() {
   const r = state.report;
   $("src").textContent = `데이터: ${r.data_source}`;
-  $("leaguePill").textContent = r.league_name;
   renderList(r);
   renderTeams(r);
   renderAgents(r);
@@ -568,7 +614,7 @@ function renderList(r) {
     return;
   }
   el.innerHTML = qualityNotice(r) + `<div class="mlist">
-    <div class="mlist-h"><span>${r.predictions.length}경기 · 경기를 누르면 상세 분석</span><span>홈승 · 무 · 원정승</span></div>
+    <div class="mlist-h"><span>${r.predictions.length}경기 · 경기를 누르면 상세 분석</span><span>${isNba() ? "홈승 · 원정승" : "홈승 · 무 · 원정승"}</span></div>
     ${r.predictions.map(row).join("")}
   </div>`;
 }
@@ -590,7 +636,7 @@ function row(p) {
     <div class="sc"><b class="num">${p.predicted_score.replace("-", " : ")}</b><small class="${subCls}">${sub}</small></div>
     <div class="side a"><span class="crest sm a">${esc(p.away_tla)}</span><span class="nm">${esc(p.away_team)}</span></div>
     <div class="pr">${wdlBar(p)}
-      <div class="nums num"><span>${pct(p.home_win)}</span><span>${pct(p.draw)}</span><span>${pct(p.away_win)}</span></div>
+      <div class="nums num"><span>${pct(p.home_win)}</span>${p.sport === "nba" ? "" : `<span>${pct(p.draw)}</span>`}<span>${pct(p.away_win)}</span></div>
     </div>
     <div class="go">${CHEVRON}</div>
   </a>`;
@@ -605,15 +651,15 @@ function renderDetail(p) {
   $("view-detail").innerHTML = `
     <div class="dhead">
       <a class="back" href="#" id="backBtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 3L5 8l5 5"/></svg>경기 목록</a>
-      <span class="ctx">${fmtDay(state.report.date)} · 라운드 ${p.matchday ?? "-"} · ${i + 1} / ${list.length}</span>
+      <span class="ctx">${fmtDay(state.report.date)}${p.matchday ? ` · 라운드 ${p.matchday}` : ""} · ${i + 1} / ${list.length}</span>
       ${nav(list[i - 1], "이전 경기", '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 3L5 8l5 5"/></svg>')}
       ${nav(list[i + 1], "다음 경기", CHEVRON)}
     </div>
     ${hero(p)}
     <div class="dgrid">
-      <div class="panel heatbox">${heatmap(p)}</div>
-      <div class="panel">${squad(p.home_team, p.home_squad, "var(--home)")}</div>
-      <div class="panel">${squad(p.away_team, p.away_squad, "var(--away)")}</div>
+      <div class="panel heatbox">${p.sport === "nba" ? marginPanel(p) : heatmap(p)}</div>
+      <div class="panel">${(p.sport === "nba" ? nbaSquad : squad)(p.home_team, p.home_squad, "var(--home)")}</div>
+      <div class="panel">${(p.sport === "nba" ? nbaSquad : squad)(p.away_team, p.away_squad, "var(--away)")}</div>
       ${mediaPanel(p)}
     </div>`;
   $("backBtn").onclick = (e) => {
@@ -625,15 +671,16 @@ function renderDetail(p) {
 
 function miniWdl(label, pr, note) {
   const q = { home_win: pr.H, draw: pr.D, away_win: pr.A };
+  const nums = isNba() ? `${pct(pr.H)} · ${pct(pr.A)}` : `${pct(pr.H)} · ${pct(pr.D)} · ${pct(pr.A)}`;
   return `<div class="mw"><span class="mw-l">${label}</span>${wdlBar(q)}
-    <span class="mw-n num">${pct(pr.H)} · ${pct(pr.D)} · ${pct(pr.A)}${note ? ` <span class="muted">${note}</span>` : ""}</span></div>`;
+    <span class="mw-n num">${nums}${note ? ` <span class="muted">${note}</span>` : ""}</span></div>`;
 }
 
 function mediaPanel(p) {
   const m = p.media;
   if (!m || !m.count) {
     if (!state.report?.media?.available) return "";
-    return `<div class="panel media"><h4>현지 매체 예측</h4><p class="muted">이 경기에 대해 수집된 영국 매체 예측이 아직 없습니다.</p></div>`;
+    return `<div class="panel media"><h4>현지 매체 예측</h4><p class="muted">이 경기에 대해 수집된 현지 매체 예측이 아직 없습니다.</p></div>`;
   }
   const final = { H: p.home_win, D: p.draw, A: p.away_win };
   const rows = m.items.map(it => `<div class="row">
@@ -650,7 +697,7 @@ function mediaPanel(p) {
       ${miniWdl("최종", final)}
     </div>
     <div class="squad">${rows}</div>
-    <p class="muted" style="font-size:11px;margin:8px 0 0">홈승 · 무 · 원정승 순. 기사 내용은 저장하지 않고 예측 스코어와 링크만 모읍니다.</p>
+    <p class="muted" style="font-size:11px;margin:8px 0 0">${isNba() ? "홈승 · 원정승 순" : "홈승 · 무 · 원정승 순"}. 기사 내용은 저장하지 않고 예측 스코어와 링크만 모읍니다.</p>
   </div>`;
 }
 
@@ -660,7 +707,7 @@ function hero(p) {
   return `<article class="card hero">
     <div class="body">
       <div class="meta">
-        <span class="num">R${p.matchday ?? "-"} · ${fmtTime(p.kickoff)}</span>
+        <span class="num">${p.matchday ? `R${p.matchday} · ` : ""}${fmtTime(p.kickoff)}</span>
         <span style="display:flex;gap:8px;align-items:center">${res}<span class="badge"><span class="dot" style="background:${cc}"></span>${cl}</span></span>
       </div>
       <div class="fixture">
@@ -670,7 +717,7 @@ function hero(p) {
         </div>
         <div class="score">
           <div class="big num">${p.predicted_score.replace("-", " : ")}</div>
-          <div class="xg num">xG ${p.home_xg.toFixed(2)} – ${p.away_xg.toFixed(2)}</div>
+          <div class="xg num">${p.sport === "nba" ? `예상 득점 ${p.home_xg.toFixed(1)} – ${p.away_xg.toFixed(1)}` : `xG ${p.home_xg.toFixed(2)} – ${p.away_xg.toFixed(2)}`}</div>
         </div>
         <div class="team away">
           <div class="crest a">${esc(p.away_tla)}</div>
@@ -681,17 +728,17 @@ function hero(p) {
         ${wdlBar(p)}
         <div class="lbl num">
           <i><span class="dot" style="background:var(--home)"></span>홈승 <b>${pct(p.home_win)}</b></i>
-          <i>무 <b>${pct(p.draw)}</b></i>
+          ${p.sport === "nba" ? "" : `<i>무 <b>${pct(p.draw)}</b></i>`}
           <i>원정승 <b>${pct(p.away_win)}</b><span class="dot" style="background:var(--away)"></span></i>
         </div>
       </div>
-      <div class="chips num">
-        <span class="chip" style="border:0;padding-left:0">유력 스코어</span>
+      ${p.sport === "nba" ? nbaChips(p) : `<div class="chips num">
+        <span class="chip" style="border:0;padding-left:0" data-tip="승무패와 무관하게 단일 스코어 확률 순위. 위 대표 스코어는 예측 결과(승/무/패) 안에서 확률 1위">전체 유력 스코어</span>
         ${p.top_scores.map(s => `<span class="chip">${s.score} <b>${pct(s.prob)}</b></span>`).join("")}
         <span class="chip">2.5골 이상 <b>${pct(p.over_2_5)}</b></span>
         <span class="chip">양팀 득점 <b>${pct(p.btts)}</b></span>
         ${p.mode_score && p.mode_score !== p.predicted_score ? `<span class="chip" data-tip="예측 결과 안에서 확률이 가장 높은 단일 스코어 (저득점에 몰리는 경향)">최빈 스코어 <b>${esc(p.mode_score)}</b></span>` : ""}
-      </div>
+      </div>`}
       ${p.sources && p.sources.length ? `<div class="srcline">일정 출처: ${p.sources.map(esc).join(", ")}${
         p.actual_score ? ` · 결과 확인: ${(p.confirmed_by || []).map(esc).join(", ")}${(p.confirmed_by || []).length >= 2 ? " (교차 확인)" : ""}` : ""}</div>` : ""}
     </div>
@@ -741,6 +788,109 @@ function squad(name, s, color) {
   </div>`;
 }
 
+/* ---------- NBA 전용 화면 ---------- */
+function nbaChips(p) {
+  const fav = p.margin >= 0 ? p.home_tla : p.away_tla;
+  return `<div class="chips num">
+    <span class="chip" data-tip="기대 득점 차이 (홈 기준 +)">예상 점수차 <b>${esc(fav)} ${Math.abs(p.margin).toFixed(1)}점</b></span>
+    <span class="chip" data-tip="두 팀 기대 득점 합">예상 총점 <b>${p.total.toFixed(1)}</b></span>
+    <span class="chip" data-tip="실제 점수차가 예상에서 벗어나는 정도 (표준편차) — 클수록 이변 가능">변동폭 <b>±${p.sigma.toFixed(1)}점</b></span>
+    ${(p.notes || []).filter(n => n.includes("백투백")).map(n => `<span class="chip">${esc(n)}</span>`).join("")}
+  </div>`;
+}
+
+function marginPanel(p) {
+  const b = p.margin_buckets || [];
+  const max = Math.max(...b.map(x => x.prob), 0.01);
+  const bars = b.map(x => `<div class="${x.label.startsWith("원정") ? "aw" : ""}" style="height:${Math.round(x.prob / max * 100)}%"
+      data-tip="${esc(x.label)}점 차 · ${pct(x.prob, 1)}"></div>`).join("");
+  const labels = b.map(x => `<span>${esc(x.label.replace("원정 ", "원").replace("홈 ", "홈"))}</span>`).join("");
+  return `<h4>점수차 확률 (왼쪽 = ${esc(p.away_tla)} 승, 오른쪽 = ${esc(p.home_tla)} 승)</h4>
+    <div class="mbars">${bars}</div><div class="mlabels">${labels}</div>
+    <div class="heat-cap" style="width:auto"><span>막대 높이 = 그 점수차로 끝날 확률</span><span>예상 점수차 ${p.margin >= 0 ? "+" : ""}${p.margin.toFixed(1)}</span></div>`;
+}
+
+function nbaSquad(name, s, color) {
+  const missing = (s.missing || []).map(m => `<div class="row">
+      <span>${esc(m.name)}<span class="reason">${esc(m.status)}${m.ppg ? ` · 평균 ${m.ppg}점 ${m.mpg}분` : ""}${m.reason ? ` · ${esc(m.reason.slice(0, 80))}` : ""}</span></span>
+      <span class="prob num">${m.counted ? (m.loss ? `−${m.loss}점` : "영향 없음") : "출전 적어 미반영"}</span></div>`).join("")
+    || `<div class="row"><span class="muted">${state.report?.data_quality?.injury_data === false ? "부상 정보 없음" : "결장 선수 없음 (또는 오늘 근처 경기가 아님)"}</span></div>`;
+  return `<div class="squad">
+    <div class="tname"><span class="sw" style="background:${color}"></span>${esc(name)}</div>
+    <div class="factors num">
+      <div class="factor" data-tip="결장 선수 평균 득점의 60% (대체 선수가 나머지를 메운다고 가정)">결장 득점 감소<b>${s.points_lost ? "−" + s.points_lost + "점" : "없음"}</b></div>
+      <div class="factor">시즌 성적<b>${esc(s.record || "-")}</b></div>
+    </div>
+    <div class="sub">최근 10경기</div><div class="fm" style="display:flex;gap:2px;flex-wrap:wrap">${formChips(s.form) || '<span class="muted">-</span>'}</div>
+    <div class="sub">결장 · 불확실 <span class="muted">(출처: ESPN, 비공식)</span></div>${missing}
+  </div>`;
+}
+
+const NBA_COLS = [
+  { key: "position", label: "#" }, { key: "name", label: "팀", cls: "l" }, { key: "conference", label: "컨퍼런스", cls: "l" },
+  { key: "played", label: "경기" }, { key: "won", label: "승" }, { key: "lost", label: "패" },
+  { key: "win_pct", label: "승률" }, { key: "ppg", label: "득점" }, { key: "oppg", label: "실점" },
+  { key: "net", label: "득실" }, { key: "form", label: "최근 10경기", cls: "l", nosort: true },
+  { key: "off", label: "공격력" }, { key: "dfn", label: "수비 허용" }, { key: "rating", label: "종합 전력" },
+];
+
+function renderNbaTeams(r) {
+  const rows = r.teams.slice();
+  const { key, dir } = state.sort;
+  if (NBA_COLS.some(c => c.key === key)) rows.sort((a, b) => (typeof a[key] === "string" ? a[key].localeCompare(b[key]) : a[key] - b[key]) * dir);
+  const sign = (v) => (v > 0 ? "+" : "") + v.toFixed(1);
+  const head = NBA_COLS.map(c => `<th class="${c.cls ?? ""} ${c.key === key ? "sorted" : ""}" data-k="${c.nosort ? "" : c.key}">${c.label}</th>`).join("");
+  const body = rows.map(t => `<tr>
+    <td class="num">${t.position}</td><td class="l"><span class="tcell"><span class="mini">${esc(t.tla)}</span>${esc(t.name)}</span></td>
+    <td class="l">${esc(t.conference || "")}</td><td class="num">${t.played}</td><td class="num">${t.won}</td><td class="num">${t.lost}</td>
+    <td class="num">${t.played ? t.win_pct.toFixed(3).replace(/^0/, "") : "-"}</td><td class="num">${t.ppg}</td><td class="num">${t.oppg}</td>
+    <td class="num">${sign(t.net)}</td><td class="l"><span class="fm" style="display:flex;gap:2px">${formChips(t.form)}</span></td>
+    <td class="num" data-tip="리그 평균 대비 득점 (+ 좋음)">${sign(t.off)}</td><td class="num" data-tip="리그 평균 대비 실점 (− 좋음)">${sign(t.dfn)}</td>
+    <td class="num"><b>${sign(t.rating)}</b></td></tr>`).join("");
+  $("view-teams").innerHTML = `<div class="panel">
+    <div class="panel-h"><h3>순위 및 팀 전력</h3><p>공격력·수비 허용 = 상대 전력·홈 이점을 보정한 리그 평균 대비 점수 · 종합 전력 = 공격력 − 수비 허용</p></div>
+    <div class="tablewrap"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div></div>`;
+  $("view-teams").querySelectorAll("th[data-k]").forEach(th => th.onclick = () => {
+    const k = th.dataset.k;
+    if (!k) return;
+    state.sort = { key: k, dir: state.sort.key === k ? -state.sort.dir : (["position", "dfn", "name", "lost", "oppg", "conference"].includes(k) ? 1 : -1) };
+    renderNbaTeams(state.report);
+  });
+}
+
+function renderNbaAccuracy(acc) {
+  const s = acc.season;
+  const pr = (x) => x == null ? "-" : pct(x);
+  const tile = (k, v, sub) => `<div class="tile"><div class="k">${k}</div><div class="v num">${v}</div><div class="s">${sub}</div></div>`;
+  const rows = acc.rounds.filter(r => r.finished > 0).reverse().map(r => {
+    const items = r.items.map(i => {
+      const done = i.actual != null;
+      const mark = !done ? '<span class="muted">예정</span>' : i.outcome_hit ? '<span class="hit">✓ 승패 적중</span>' : '<span class="miss">✗ 승패 빗나감</span>';
+      const ex = done ? (i.exact_hit ? ' <small class="hit">점수 정확히 적중</small>' : i.close_hit ? ' <small class="hit">근접(±5)</small>' : "") : "";
+      return `<tr><td class="l num">${esc(i.date.slice(5))}</td><td class="l">${esc(i.home)} – ${esc(i.away)}${i.media_count ? ` <span class="tag">매체 ${i.media_count}</span>` : ""}</td>
+        <td class="num"><b>${esc(i.predicted)}</b></td><td class="num"><b>${done ? esc(i.actual) : "-"}</b></td>
+        <td class="num">${i.abs_err != null ? i.abs_err.toFixed(1) : "-"}</td><td class="l">${mark}${ex}</td></tr>`;
+    }).join("");
+    return `<details class="round" ${r.label === acc.latest_complete_round ? "open" : ""}>
+      <summary><span class="rd">${esc(r.label)}</span>${r.complete ? '<span class="tag">완료</span>' : `<span class="muted">${r.finished}/${r.matches} 진행</span>`}
+        <span class="rs">승패 <b class="num">${r.outcome_hits}/${r.finished}</b> ${rateBar(r.outcome_rate, "var(--home)")} <span class="num">${pr(r.outcome_rate)}</span></span>
+        <span class="rs">근접 <b class="num">${r.close_hits}</b> · 정확 <b class="num">${r.exact_hits}</b> · 평균 오차 <b class="num">${r.mean_abs_err ?? "-"}</b>점</span></summary>
+      <div class="tablewrap"><table><thead><tr><th class="l">날짜</th><th class="l">경기</th><th>예측</th><th>실제</th><th>오차</th><th class="l">판정</th></tr></thead>
+      <tbody>${items}</tbody></table></div></details>`;
+  }).join("");
+  $("view-accuracy").innerHTML = `
+    <div class="tiles">
+      ${tile("승패 적중률", pr(s.outcome_rate), `${s.outcome_hits} / ${s.finished}경기`)}
+      ${tile("근접 적중률 (두 팀 ±5점)", pr(s.close_rate), `${s.close_hits} / ${s.finished}경기 · 정확히 일치 ${s.exact_hits}`)}
+      ${tile("평균 점수 오차", s.mean_abs_err != null ? `${s.mean_abs_err}점` : "-", "팀당 예측 점수와 실제 점수 차이")}
+      ${s.media_matches ? tile("매체 반영 효과", `${pr(s.model_only_rate)} → ${pr(s.with_media_rate)}`, `매체 예측이 있던 ${s.media_matches}경기의 승패 적중률`)
+                        : tile("매체 반영 효과", "-", "매체 예측이 있는 끝난 경기가 아직 없음")}
+    </div>
+    <p class="muted acc-note">각 경기일에 <b>그날 이전 데이터만으로</b> 만든 예측을 실제 결과와 비교합니다(주 단위). 농구는 정확한 점수를 맞히기가 거의 불가능해
+      두 팀 점수가 모두 ±5점 안이면 '근접'으로 셉니다. 참고: 홈팀만 찍으면 승패 적중률 약 55~58%.</p>
+    <div class="panel">${rows || '<div class="empty">아직 끝난 경기가 없습니다.</div>'}</div>`;
+}
+
 /* ---------- 팀 전력 ---------- */
 const COLS = [
   { key: "position", label: "#", cls: "" },
@@ -764,6 +914,7 @@ function meter(v, goodHigh) {
 }
 
 function renderTeams(r) {
+  if (r.sport === "nba") return renderNbaTeams(r);
   const rows = r.teams.map(t => ({
     ...t, gd: t.gf - t.ga,
     attack: (t.attack_home + t.attack_away) / 2,
@@ -817,6 +968,7 @@ function rateBar(rate, color) {
 }
 
 function renderAccuracy(acc) {
+  if (acc.sport === "nba") return renderNbaAccuracy(acc);
   const s = acc.season;
   const tile = (k, v, sub) => `<div class="tile"><div class="k">${k}</div><div class="v num">${v}</div><div class="s">${sub}</div></div>`;
   const pr = (x) => x == null ? "-" : pct(x);
@@ -867,10 +1019,22 @@ const AGENTS = {
   team_analyst: ["팀 분석", "시간 가중·상대 보정으로 홈/원정 공격력·수비력과 최근 폼 추정"],
   player_analyst: ["선수 분석", "득점·도움 기여도와 출전 확률로 공격·수비 보정 계수 산출"],
   predictor: ["스코어 예측", "Dixon-Coles 포아송 모델로 스코어 분포와 승무패 확률 계산"],
+  nba_data: ["데이터 수집", "balldontlie 에서 경기·결과, ESPN(비공식)에서 부상을 모음"],
+  nba_quality: ["데이터 검증", "출처 응답, 결과 반영 지연, 부상 정보 점검"],
+  nba_team: ["팀 분석", "시간 가중·상대 보정으로 팀별 득점력·실점, 홈 이점, 점수차 변동폭 추정"],
+  nba_injury: ["부상 분석", "결장 주전의 평균 득점으로 팀 득점 감소 추정 (오늘 근처 경기만)"],
+  nba_predictor: ["점수 예측", "기대 득점 → 점수차 정규분포 → 승리 확률, 백투백 보정"],
+  nba_media: ["매체 합의", "미국 현지 매체 예측 점수차를 적중률로 가중해 일부 반영"],
   media_consensus: ["매체 합의", "영국 현지 매체 예측을 칼럼니스트 적중률로 가중해 승무패 확률에 일부 반영"],
   reporter: ["리포트 발행", "결과를 JSON으로 저장해 웹·외부에서 사용"],
 };
 const PARAMS = {
+  league_points: ["리그 평균 득점", "팀당 경기당"], home_advantage: ["홈 이점", "점수차 기준"],
+  margin_sd: ["점수차 변동폭", "표준편차 (실제 결과로 추정)"],
+  injury_replacement: ["결장 득점 손실률", "결장 선수 평균 득점 중 실제 손실"],
+  injury_regular_share: ["주전 기준", "팀 경기 대비 출전 비율"], injury_window_days: ["부상 적용 기간", "오늘부터 N일 안 경기"],
+  back_to_back_penalty: ["백투백 감점", "전날 경기한 팀 득점 감소"], iterations: ["반복 추정 횟수", ""],
+  margin_sd_default: ["점수차 변동폭 기본값", ""],
   time_decay_xi: ["시간 가중 감쇠", "경기 가중치 = e^(-ξ·경과일)"],
   shrinkage_games: ["표본 보정 강도", "경기 수가 적을 때 사전값으로 당기는 정도"],
   form_window: ["폼 계산 경기 수", ""],
@@ -942,7 +1106,8 @@ function sourcesPanel(r) {
   const items = r.sources.map(s => {
     const state = s.ok ? ["good", "사용 중"] : s.enabled ? ["bad", "오류"] : ["warn", "키 없음"];
     const c = s.counts || {};
-    const counts = s.ok ? `<p class="num">팀 ${c.teams} · 경기 ${c.matches} (결과 ${c.results}) · 직전 시즌 ${c.previous_season} · 선수 ${c.players} · 결장 ${c.injuries}</p>` : "";
+    const LABEL = { teams: "팀", matches: "경기", results: "결과", previous_season: "직전 시즌", players: "선수", injuries: "결장" };
+    const counts = s.ok ? `<p class="num">${Object.entries(c).map(([k, v]) => `${LABEL[k] || k} ${v}`).join(" · ")}</p>` : "";
     const notes = (s.notes || []).map(n => `<p class="muted">· ${esc(n)}</p>`).join("");
     return `<div class="src-item">
       <h5>${levelIcon(state[0])}${esc(s.name)} <span class="tag">${state[1]}</span></h5>

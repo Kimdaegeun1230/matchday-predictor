@@ -25,7 +25,7 @@ class PipelineTest(unittest.TestCase):
 
     def test_all_leagues_produce_predictions(self):
         target = date(2026, 10, 18)
-        for key in LEAGUES:
+        for key in [k for k, l in LEAGUES.items() if l.sport == "football"]:
             report = self.coord.predict(key, target)
             self.assertGreater(len(report["predictions"]), 0, key)
             for p in report["predictions"]:

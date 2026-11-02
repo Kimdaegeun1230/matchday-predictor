@@ -69,3 +69,9 @@ def _fetch(url: str, headers: dict[str, str] | None, cache_file: Path) -> dict |
                 continue
             raise ApiError(f"{url} -> 응답 시간 초과 ({exc})") from exc
     raise ApiError(f"{url} -> 재시도 초과")
+
+
+def cache_fresh(url: str, ttl: int = CACHE_TTL_SECONDS) -> bool:
+    """이 URL 응답이 캐시에 있고 아직 유효한가 (요청 제한이 있는 API 에서 대기 여부 판단용)."""
+    cache_file = CACHE_DIR / (hashlib.sha1(url.encode()).hexdigest() + ".json")
+    return cache_file.exists() and time.time() - cache_file.stat().st_mtime < ttl

@@ -21,6 +21,9 @@ from pathlib import Path
 from ..agents.coordinator import CoordinatorAgent
 from ..config import LEAGUES
 from ..evaluation import round_accuracy
+from ..nba.engine import NBA_MEDIA_FILE
+from ..nba.evaluation import nba_accuracy
+from ..providers.http import ApiError
 
 STATIC_DIR = Path(__file__).parent / "static"
 STATIC_MARKER = "<!--MP_STATIC-->"
@@ -41,15 +44,22 @@ def build_site(out_dir: Path, source: str = "auto", domain: str | None = None, t
 
     coordinator = CoordinatorAgent(source=source, write_files=False)
     summary = {"generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "leagues": {}}
+    built = []
     for key, league in LEAGUES.items():
-        calendar = coordinator.match_calendar(key, today)
+        try:
+            calendar = coordinator.match_calendar(key, today)
+        except ApiError as exc:  # 한 리그 데이터가 막혀도 나머지 리그는 배포
+            log.warning("%s 빌드 건너뜀: %s", key, exc)
+            summary["leagues"][key] = {"error": str(exc)}
+            continue
+        built.append(league)
         _write(out_dir / "data" / key / "calendar.json", calendar)
         reports = []
         for day in calendar:
             report = coordinator.predict(key, date.fromisoformat(day["date"]))
             _write(out_dir / "data" / key / "predictions" / f"{day['date']}.json", report)
             reports.append(report)
-        accuracy = round_accuracy(reports)
+        accuracy = nba_accuracy(reports) if league.sport == "nba" else round_accuracy(reports)
         _write(out_dir / "data" / key / "accuracy.json", accuracy)
         summary["leagues"][key] = {"dates": len(calendar), "matches": sum(d["matches"] for d in calendar),
                                    "accuracy": accuracy["season"]}
@@ -58,9 +68,11 @@ def build_site(out_dir: Path, source: str = "auto", domain: str | None = None, t
     # 매체 예측 기록도 함께 올려 둔다 → 다음 빌드(GitHub Actions)가 내려받아 이어서 쌓음 (적중률 유지)
     if coordinator.media_path.exists():
         shutil.copy(coordinator.media_path, out_dir / "data" / "media.json")
+    if NBA_MEDIA_FILE.exists():
+        shutil.copy(NBA_MEDIA_FILE, out_dir / "data" / "nba_media.json")
 
     _write(out_dir / "data" / "leagues.json",
-           [{"key": l.key, "name": l.name, "country": l.country} for l in LEAGUES.values()])
+           [{"key": l.key, "name": l.name, "country": l.country, "sport": l.sport} for l in built])
     _write(out_dir / "data" / "meta.json", summary)
 
     html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")

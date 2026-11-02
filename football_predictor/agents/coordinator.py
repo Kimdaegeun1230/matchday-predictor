@@ -50,6 +50,20 @@ class CoordinatorAgent:
         self.cache_seconds = cache_seconds
         self.media_path = media_path
         self._cache: dict[tuple[str, date], tuple[float, dict]] = {}
+        self._engines: dict[str, object] = {}
+
+    def engine(self, league_key: str):
+        """축구가 아닌 종목(NBA)은 종목 전용 파이프라인을 쓴다. 축구면 None."""
+        league = get_league(league_key)
+        if league.sport == "football":
+            return None
+        if self.source == "sample":
+            from ..providers.http import ApiError
+            raise ApiError(f"샘플 모드에는 {league.name} 데이터가 없습니다")
+        if league.key not in self._engines:
+            from ..nba.engine import NbaEngine
+            self._engines[league.key] = NbaEngine(league)
+        return self._engines[league.key]
 
     def build_team(self) -> list[Agent]:
         return [
@@ -95,16 +109,22 @@ class CoordinatorAgent:
         if use_cache and hit and time.time() - hit[0] < self.cache_seconds:
             return hit[1]
 
-        ctx = MatchContext(league=league, target_date=target_date)
-        for agent in self.build_team():
-            agent(ctx)
-        report = build_report(ctx)
+        eng = self.engine(league.key)
+        if eng is not None:
+            report = eng.predict(target_date)
+        else:
+            ctx = MatchContext(league=league, target_date=target_date)
+            for agent in self.build_team():
+                agent(ctx)
+            report = build_report(ctx)
         self._cache[key] = (time.time(), report)
         return report
 
     def next_match_date(self, league_key: str, from_date: date) -> date | None:
         """from_date 이후(당일 포함) 아직 끝나지 않은 첫 경기의 날짜."""
         league = get_league(league_key)
+        if (eng := self.engine(league.key)) is not None:
+            return eng.next_date(from_date)
         upcoming = [m.utc_date.date() for m in self.provider.get_matches(league, from_date)
                     if not m.finished and m.status != "POSTPONED" and m.utc_date.date() >= from_date]
         return min(upcoming, default=None)
@@ -112,6 +132,8 @@ class CoordinatorAgent:
     def match_calendar(self, league_key: str, from_date: date) -> list[dict]:
         """이번 시즌 경기일 목록: [{date, matchday, matches, finished}]"""
         league = get_league(league_key)
+        if (eng := self.engine(league.key)) is not None:
+            return eng.calendar(from_date)
         season_year = from_date.year if from_date.month >= 7 else from_date.year - 1
         days: dict[date, dict] = {}
         for m in self.provider.get_matches(league, from_date):
@@ -129,10 +151,15 @@ class CoordinatorAgent:
         today = today or date.today()
         reports = [self.predict(league_key, date.fromisoformat(d["date"]))
                    for d in self.match_calendar(league_key, today) if d["finished"]]
+        if self.engine(league_key) is not None:
+            from ..nba.evaluation import nba_accuracy
+            return nba_accuracy(reports)
         return round_accuracy(reports)
 
     def source_status(self, league_key: str, as_of: date) -> dict:
         """출처별 응답 상태와 병합 결과 (샘플 공급자는 빈 값)."""
+        if (eng := self.engine(league_key)) is not None:
+            return eng.source_status()
         report = getattr(self.provider, "report", None)
         return report(get_league(league_key), as_of) if report else {}
 

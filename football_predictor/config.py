@@ -34,16 +34,18 @@ class League:
     country: str
     api_football_id: int  # API-Football 리그 id
     openfootball_code: str  # openfootball 파일명 (예: en.1)
+    sport: str = "football"  # football | nba — 종목마다 다른 예측 파이프라인을 쓴다
 
 
 ALL_LEAGUES: dict[str, League] = {
     "EPL": League("EPL", "Premier League", "PL", "England", 39, "en.1"),
     "LALIGA": League("LALIGA", "La Liga", "PD", "Spain", 140, "es.1"),
     "BUNDESLIGA": League("BUNDESLIGA", "Bundesliga", "BL1", "Germany", 78, "de.1"),
+    "NBA": League("NBA", "NBA", "", "USA", 0, "", sport="nba"),
 }
 
-# 현재는 프리미어리그만 활성화. 리그 키를 추가하면 CLI/웹에 바로 노출된다.
-ENABLED_LEAGUES = ("EPL",)
+# 활성 리그. 리그 키를 추가하면 CLI/웹에 바로 노출된다.
+ENABLED_LEAGUES = ("EPL", "NBA")
 LEAGUES: dict[str, League] = {k: ALL_LEAGUES[k] for k in ENABLED_LEAGUES}
 
 
@@ -70,7 +72,7 @@ class ModelConfig:
     dixon_coles_rho: float = -0.10    # 저득점(0-0, 1-0, 0-1, 1-1) 보정 계수
     draw_gap: float = 0.10            # 홈승·원정승 확률 차이가 이보다 작고
     draw_min: float = 0.25            # 무승부 확률이 이 이상이면 무승부로 예측
-    score_pool: int = 5               # 대표 스코어: 예측 결과 안 상위 N개 스코어 중 확률대로 하나 (1 = 항상 최빈)
+    score_pool: int = 1               # 대표 스코어: 예측 결과 안 상위 N개 중 확률대로 하나 (1 = 예측 결과 안 확률 1위, 기본)
     max_goals: int = 10
 
 
@@ -113,3 +115,26 @@ class MediaConfig:
 
 MEDIA = MediaConfig()
 CACHE_TTL_SECONDS = int(os.environ.get("CACHE_TTL_SECONDS", "3600"))
+
+
+# ---------------------------------------------------------------- NBA
+BALLDONTLIE_API_KEY = os.environ.get("BALLDONTLIE_API_KEY", "").strip()
+BALLDONTLIE_BASE_URL = "https://api.balldontlie.io/v1"
+ESPN_NBA_BASE_URL = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba"
+ESPN_ATHLETE_URL = "https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/{id}/overview"
+
+
+@dataclass(frozen=True)
+class NbaConfig:
+    time_decay_xi: float = 0.012      # 경기 가중치 = exp(-xi * 경과일) (약 2달 반감)
+    shrinkage_games: float = 8.0      # 표본 적을 때 리그 평균(0)으로 당기는 강도
+    iterations: int = 40
+    margin_sd_default: float = 12.5   # 점수차 표준편차 기본값 (데이터로 다시 추정)
+    back_to_back_penalty: float = 1.5 # 전날도 경기한 팀의 득점 감소
+    injury_replacement: float = 0.6   # 결장 선수 평균 득점 중 실제로 잃는 비율 (나머지는 대체 선수가 메움)
+    injury_regular_share: float = 0.5 # 팀 경기의 이 비율 이상 뛴 선수만 결장 영향 반영 (오래 빠진 선수는 이미 성적에 반영됨)
+    injury_window_days: int = 3       # 오늘 기준 이 기간 안의 경기에만 현재 부상 정보 적용
+    request_interval: float = 12.5    # balldontlie 무료 등급: 분당 5회
+
+
+NBA = NbaConfig()
