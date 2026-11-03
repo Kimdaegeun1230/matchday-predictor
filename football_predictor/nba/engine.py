@@ -41,6 +41,7 @@ class NbaContext:
     mu: float = 113.0
     hca: float = 2.5
     sigma: float = 12.5
+    score_sd: float = 12.5
     off: dict[str, float] = field(default_factory=dict)
     dfn: dict[str, float] = field(default_factory=dict)
     standings: list[dict] = field(default_factory=list)
@@ -131,6 +132,12 @@ class NbaTeamAgent(Agent):
         res = [(g.home_pts - g.away_pts) - (ctx.hca + off.get(g.home, 0) + dfn.get(g.away, 0)
                                             - off.get(g.away, 0) - dfn.get(g.home, 0)) for g, _ in games[-600:]]
         ctx.sigma = math.sqrt(sum(r * r for r in res) / len(res)) if len(res) > 50 else cfg.margin_sd_default
+        # 팀 한 쪽 득점의 표준편차 (기대 득점이 110 근처에 몰려도 실제 점수는 이만큼 흩어짐)
+        tres = []
+        for g, _ in games[-600:]:
+            tres.append(g.home_pts - (ctx.mu + ctx.hca / 2 + off.get(g.home, 0) + dfn.get(g.away, 0)))
+            tres.append(g.away_pts - (ctx.mu - ctx.hca / 2 + off.get(g.away, 0) + dfn.get(g.home, 0)))
+        ctx.score_sd = math.sqrt(sum(r * r for r in tres) / len(tres)) if len(tres) > 100 else cfg.margin_sd_default
         ctx.standings = self._standings(ctx)
         top = sorted(teams, key=lambda t: off[t] - dfn[t], reverse=True)[:3]
         names = ", ".join(ctx.data.teams[t].name if t in ctx.data.teams else t for t in top)
@@ -286,6 +293,7 @@ class NbaPredictorAgent(Agent):
             "predicted_score": predicted_score(eh, ea),
             "home_win": round(p_home, 4), "draw": 0.0, "away_win": round(1 - p_home, 4),
             "margin": round(margin, 1), "total": round(eh + ea, 1), "sigma": round(ctx.sigma, 1),
+            "score_sd": round(ctx.score_sd, 1),
             "margin_buckets": margin_buckets(margin, ctx.sigma),
             "confidence": conf, "home_squad": squad(g.home), "away_squad": squad(g.away),
             "sources": [s["name"] for s in ctx.data.status if s["ok"] and s["key"] == "balldontlie"],

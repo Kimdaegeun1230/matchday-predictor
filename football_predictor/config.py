@@ -132,7 +132,7 @@ ESPN_ATHLETE_URL = "https://site.web.api.espn.com/apis/common/v3/sports/basketba
 @dataclass(frozen=True)
 class NbaConfig:
     time_decay_xi: float = 0.012      # 경기 가중치 = exp(-xi * 경과일) (약 2달 반감)
-    shrinkage_games: float = 8.0      # 표본 적을 때 리그 평균(0)으로 당기는 강도
+    shrinkage_games: float = 3.0      # 표본 적을 때 리그 평균(0)으로 당기는 강도
     iterations: int = 40
     margin_sd_default: float = 12.5   # 점수차 표준편차 기본값 (데이터로 다시 추정)
     back_to_back_penalty: float = 1.5 # 전날도 경기한 팀의 득점 감소

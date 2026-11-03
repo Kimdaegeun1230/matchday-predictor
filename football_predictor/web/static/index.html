@@ -789,12 +789,14 @@ function squad(name, s, color) {
 }
 
 /* ---------- NBA 전용 화면 ---------- */
+const nbaRange = (x, sd) => `${Math.round(x - 1.2816 * sd)}–${Math.round(x + 1.2816 * sd)}`;
 function nbaChips(p) {
   const fav = p.margin >= 0 ? p.home_tla : p.away_tla;
   return `<div class="chips num">
     <span class="chip" data-tip="기대 득점 차이 (홈 기준 +)">예상 점수차 <b>${esc(fav)} ${Math.abs(p.margin).toFixed(1)}점</b></span>
     <span class="chip" data-tip="두 팀 기대 득점 합">예상 총점 <b>${p.total.toFixed(1)}</b></span>
     <span class="chip" data-tip="실제 점수차가 예상에서 벗어나는 정도 (표준편차) — 클수록 이변 가능">변동폭 <b>±${p.sigma.toFixed(1)}점</b></span>
+    ${p.score_sd ? `<span class="chip" data-tip="실제 점수가 10번 중 8번 들어올 범위. 예상 점수는 평균이라 110점 근처에 몰리지만, 실제 점수는 이 범위 안에서 크게 흩어집니다">득점 범위 80% <b>${esc(p.home_tla)} ${nbaRange(p.home_xg, p.score_sd)} · ${esc(p.away_tla)} ${nbaRange(p.away_xg, p.score_sd)}</b></span>` : ""}
     ${(p.notes || []).filter(n => n.includes("백투백")).map(n => `<span class="chip">${esc(n)}</span>`).join("")}
   </div>`;
 }
