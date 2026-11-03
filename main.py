@@ -133,6 +133,8 @@ def main(argv: list[str] | None = None) -> int:
     i.add_argument("found", help="찾은 예측 JSON 파일")
     i.add_argument("--due", default="data/media/due.json")
 
+    sub.add_parser("nba-lines", help="NBA 언더/오버 기준점 확정 (경기 전날 밤 실행, 오늘 미국 날짜 경기)")
+
     r = sub.add_parser("media-restore", help="배포된 사이트에서 매체 예측 기록을 내려받기 (없을 때만)")
     r.add_argument("--from", dest="site_url", required=True, help="사이트 주소 (예: https://아이디.github.io/저장소/)")
 
@@ -190,6 +192,11 @@ def main(argv: list[str] | None = None) -> int:
         r = import_found(Path(args.due), Path(args.found))
         print(f"제출 {r['submitted']}건 중 {r['accepted']}건 반영 (새 예측 {r['new']}건, 제외 {r['rejected']}건)"
               f" · 대상 경기 {r['fixtures']}개 · 누적 {r['total']}건")
+        return 0
+
+    if args.cmd == "nba-lines":
+        r = CoordinatorAgent(write_files=False).engine("NBA").lock_lines(date.today())
+        print(f"언더/오버 기준점 새로 확정 {r['new']}경기 · 누적 {r['total']}경기 → data/media/nba_lines.json")
         return 0
 
     if args.cmd == "media-restore":

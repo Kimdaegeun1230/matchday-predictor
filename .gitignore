@@ -9,3 +9,4 @@ site/
 __pycache__/
 *.pyc
 !data/media/nba_media.json
+!data/media/nba_lines.json

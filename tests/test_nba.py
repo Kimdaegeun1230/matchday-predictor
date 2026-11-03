@@ -60,9 +60,10 @@ class FakeInjuries:
         return self._inj
 
 
-def engine(injuries=(), media_path=None):
+def engine(injuries=(), media_path=None, lines_path=None):
     return NbaEngine(ALL_LEAGUES["NBA"], FakeGames(), FakeInjuries(injuries),
-                     media_path=media_path or Path(tempfile.gettempdir()) / "no-nba-media.json")
+                     media_path=media_path or Path(tempfile.gettempdir()) / "no-nba-media.json",
+                     lines_path=lines_path or Path(tempfile.gettempdir()) / "no-nba-lines.json")
 
 
 class NbaModelTest(unittest.TestCase):
@@ -80,7 +81,7 @@ class NbaModelTest(unittest.TestCase):
         top = sorted(r["teams"], key=lambda t: t["rating"], reverse=True)[0]
         self.assertEqual(top["team"], "celtics")
         self.assertEqual([e["agent"] for e in r["agent_log"]],
-                         ["nba_data", "nba_quality", "nba_team", "nba_injury", "nba_predictor", "nba_media"])
+                         ["nba_data", "nba_quality", "nba_team", "nba_injury", "nba_predictor", "nba_media", "nba_totals"])
 
     def test_star_injury_lowers_team_score(self):
         base = {x["match_id"]: x for x in engine().predict(TODAY)["predictions"]}[9001]
@@ -125,6 +126,24 @@ class NbaModelTest(unittest.TestCase):
         self.assertGreater(s["outcome_rate"], 0.5)                # 강약 차가 분명한 가짜 리그
         self.assertIsNotNone(s["mean_abs_err"])
         self.assertLess(s["mean_abs_err"], 15)
+
+    def test_over_under_line_and_media(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            lines, media = Path(tmp) / "lines.json", Path(tmp) / "nba_media.json"
+            self.assertEqual(engine(lines_path=lines).lock_lines(TODAY)["new"], 2)
+            self.assertEqual(engine(lines_path=lines).lock_lines(TODAY)["new"], 0)   # 한 번 정하면 그대로
+            line = json.loads(lines.read_text(encoding="utf-8"))["9002"]["line"]
+            self.assertEqual(line % 1, 0.5)
+            t = {x["match_id"]: x for x in engine(lines_path=lines).predict(TODAY)["predictions"]}[9002]["totals"]
+            self.assertTrue(t["locked"])
+            self.assertAlmostEqual(t["over"], 0.5, delta=0.03)                      # 모델만이면 거의 반반
+            media.write_text(json.dumps({"predictions": [
+                {"fixture_id": "9002", "home": "", "away": "", "kickoff": "", "outlet": "Covers", "author": "W",
+                 "home_goals": 130, "away_goals": 125, "url": "https://www.covers.com/x", "headline": "",
+                 "collected_at": ""}], "collected": {}}), encoding="utf-8")
+            t = {x["match_id"]: x for x in engine(media_path=media, lines_path=lines).predict(TODAY)["predictions"]}[9002]["totals"]
+            self.assertGreater(t["over"], 0.55)                                    # 매체가 고득점 예상 → 오버 쪽
+            self.assertEqual((t["over_votes"], t["under_votes"]), (1, 0))
 
     def test_media_import_checks_nba_outlets_and_scores(self):
         from football_predictor.media.manual import import_found

@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import json
 import logging
 import math
 import time
@@ -25,6 +26,19 @@ from .sources import BalldontlieSource, EspnInjurySource, NbaData, NbaGame, NbaI
 
 log = logging.getLogger("agent.nba")
 NBA_MEDIA_FILE = DATA_DIR / "media" / "nba_media.json"
+NBA_LINES_FILE = DATA_DIR / "media" / "nba_lines.json"   # 경기 전날 밤 확정한 언더/오버 기준점
+
+
+def ou_line(total: float) -> float:
+    """기준점은 x.5 로 (동점 없음)."""
+    return math.floor(total) + 0.5
+
+
+def load_lines(path: Path = NBA_LINES_FILE) -> dict:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
 
 
 def phi(x: float) -> float:
@@ -42,6 +56,7 @@ class NbaContext:
     hca: float = 2.5
     sigma: float = 12.5
     score_sd: float = 12.5
+    total_sd: float = 18.0
     off: dict[str, float] = field(default_factory=dict)
     dfn: dict[str, float] = field(default_factory=dict)
     standings: list[dict] = field(default_factory=list)
@@ -138,6 +153,8 @@ class NbaTeamAgent(Agent):
             tres.append(g.home_pts - (ctx.mu + ctx.hca / 2 + off.get(g.home, 0) + dfn.get(g.away, 0)))
             tres.append(g.away_pts - (ctx.mu - ctx.hca / 2 + off.get(g.away, 0) + dfn.get(g.home, 0)))
         ctx.score_sd = math.sqrt(sum(r * r for r in tres) / len(tres)) if len(tres) > 100 else cfg.margin_sd_default
+        tot = [tres[i] + tres[i + 1] for i in range(0, len(tres) - 1, 2)]  # 두 팀 득점 합의 잔차
+        ctx.total_sd = math.sqrt(sum(r * r for r in tot) / len(tot)) if len(tot) > 50 else 18.0
         ctx.standings = self._standings(ctx)
         top = sorted(teams, key=lambda t: off[t] - dfn[t], reverse=True)[:3]
         names = ", ".join(ctx.data.teams[t].name if t in ctx.data.teams else t for t in top)
@@ -356,15 +373,76 @@ class NbaMediaAgent(Agent):
         return f"매체 예측 {len(store.predictions)}건, {adjusted}경기에 반영"
 
 
+class NbaTotalsAgent(Agent):
+    """언더/오버: 기준점(전날 밤 확정, 없으면 현재 예상 총점으로 임시) 대비 오버 확률.
+    예상 총점 = 모델 총점과 매체 기사 예상 총점(적중률 가중)을 섞은 값."""
+    name = "nba_totals"
+    role = "언더/오버 기준점과 오버·언더 확률"
+
+    def __init__(self, media_path: Path = NBA_MEDIA_FILE, lines_path: Path = NBA_LINES_FILE,
+                 config: MediaConfig = MEDIA):
+        super().__init__()
+        self.media_path, self.lines_path, self.cfg = media_path, lines_path, config
+
+    def run(self, ctx: NbaContext) -> str:
+        lines = load_lines(self.lines_path)
+        store = MediaStore(self.media_path, self.cfg) if self.media_path.exists() else None
+        stats = store.pundit_stats({str(g.id): (g.home_pts, g.away_pts) for g in ctx.history}) if store else {}
+        locked = with_media = 0
+        for p in ctx.predictions:
+            fixed = lines.get(str(p["match_id"]))
+            # 확정 당시 모델 총점을 기준으로 (이후 부상 소식으로 바뀐 만큼은 현재 총점에 반영됨)
+            model_total = p["total"]
+            line = fixed["line"] if fixed else ou_line(model_total)
+            items = store.for_fixture(str(p["match_id"])) if store else []
+            wsum = wtot = 0.0
+            over_votes = under_votes = 0
+            listed = []
+            for it in items:
+                s = stats.get(pundit_key(it))
+                w = s.weight(self.cfg) if s else 1.0
+                t = it["home_goals"] + it["away_goals"]
+                wsum += w
+                wtot += w * t
+                over_votes += t > line
+                under_votes += t < line
+                listed.append({"outlet": it["outlet"], "author": it["author"], "total": t, "url": it["url"],
+                               "pick": "over" if t > line else "under" if t < line else "push"})
+            expected, media_total, blend = model_total, None, 0.0
+            if wsum:
+                media_total = wtot / wsum
+                blend = self.cfg.max_blend * wsum / (wsum + self.cfg.blend_half_weight)
+                expected = (1 - blend) * model_total + blend * media_total
+                with_media += 1
+            p_over = 1 - phi((line - expected) / ctx.total_sd)
+            actual = None
+            if p.get("actual_score"):
+                h, a = p["actual_score"].split("-")
+                actual = int(h) + int(a)
+            p["totals"] = {
+                "line": line, "locked": bool(fixed), "set_at": fixed.get("set_at") if fixed else None,
+                "model_total": round(model_total, 1), "media_total": round(media_total, 1) if media_total else None,
+                "media_count": len(items), "blend": round(blend, 3), "over_votes": over_votes,
+                "under_votes": under_votes, "items": listed, "expected_total": round(expected, 1),
+                "total_sd": round(ctx.total_sd, 1), "over": round(p_over, 4), "under": round(1 - p_over, 4),
+                "pick": "over" if p_over >= 0.5 else "under", "actual_total": actual,
+                "result": None if actual is None else ("over" if actual > line else "under"),
+            }
+            locked += bool(fixed)
+        return f"기준점 확정 {locked}경기 · 매체 총점 반영 {with_media}경기 (총점 표준편차 {ctx.total_sd:.1f})"
+
+
 class NbaEngine:
     """CoordinatorAgent 가 NBA 리그일 때 쓰는 파이프라인. 출처 수집은 한 번 해 두고 날짜마다 재사용한다."""
 
     def __init__(self, league: League, games_source=None, injury_source=None, media_path: Path = NBA_MEDIA_FILE,
+                 lines_path: Path = NBA_LINES_FILE,
                  memo_seconds: int = 600):
         self.league = league
         self.games_source = games_source or BalldontlieSource()
         self.injury_source = injury_source or EspnInjurySource()
         self.media_path = media_path
+        self.lines_path = lines_path
         self.memo_seconds = memo_seconds
         self._data: tuple[float, NbaData] | None = None
 
@@ -377,7 +455,23 @@ class NbaEngine:
 
     def team(self) -> list[Agent]:
         return [NbaDataAgent(self), NbaQualityAgent(), NbaTeamAgent(), NbaInjuryAgent(), NbaPredictorAgent(),
-                NbaMediaAgent(self.media_path)]
+                NbaMediaAgent(self.media_path), NbaTotalsAgent(self.media_path, self.lines_path)]
+
+    def lock_lines(self, today: date) -> dict:
+        """경기 전날 밤(한국 시간) 실행: 미국 날짜가 today 인 경기 중 아직 기준점이 없는 것을 모델 총점으로 확정."""
+        lines = load_lines(self.lines_path)
+        new = 0
+        for p in self.predict(today)["predictions"]:
+            k = str(p["match_id"])
+            if k in lines or p.get("actual_score"):
+                continue
+            lines[k] = {"line": ou_line(p["total"]), "model_total": p["total"], "home": p["home_team"],
+                        "away": p["away_team"], "date": p["date"],
+                        "set_at": datetime.now(timezone.utc).isoformat(timespec="minutes")}
+            new += 1
+        self.lines_path.parent.mkdir(parents=True, exist_ok=True)
+        self.lines_path.write_text(json.dumps(lines, ensure_ascii=False, indent=1), encoding="utf-8")
+        return {"new": new, "total": len(lines)}
 
     def predict(self, target: date) -> dict:
         ctx = NbaContext(self.league, target)

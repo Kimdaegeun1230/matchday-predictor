@@ -241,6 +241,14 @@
   .mbars div.aw { background: var(--away); }
   .mlabels { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; font-size: 10px; color: var(--muted); text-align: center; margin-top: 4px; }
   .panel.media { grid-column: 1 / -1; }
+  .ou { font-size: 11px; color: var(--muted); margin-top: 3px; white-space: nowrap; }
+  .ou b { color: var(--ink); font-weight: 650; }
+  .oubar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; margin: 10px 0 6px; }
+  .oubar .o { background: var(--home); } .oubar .u { background: var(--away); }
+  .ouhead { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .ouhead .ln { font-size: 26px; font-weight: 700; }
+  .oustats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; font-size: 12px; color: var(--muted); }
+  .oustats b { display: block; font-size: 15px; color: var(--ink); }
   .mws { display: grid; gap: 8px; margin-bottom: 12px; max-width: 560px; }
   .mw { display: grid; grid-template-columns: 72px 1fr auto; gap: 10px; align-items: center; font-size: 12px; }
   .mw .bar { height: 6px; }
@@ -637,6 +645,7 @@ function row(p) {
     <div class="side a"><span class="crest sm a">${esc(p.away_tla)}</span><span class="nm">${esc(p.away_team)}</span></div>
     <div class="pr">${wdlBar(p)}
       <div class="nums num"><span>${pct(p.home_win)}</span>${p.sport === "nba" ? "" : `<span>${pct(p.draw)}</span>`}<span>${pct(p.away_win)}</span></div>
+      ${p.totals ? `<div class="ou num">O/U ${p.totals.line} · <b>${p.totals.pick === "over" ? "오버" : "언더"} ${pct(Math.max(p.totals.over, p.totals.under))}</b>${p.totals.result ? ` · ${p.totals.result === p.totals.pick ? "✓" : "✗"}` : ""}</div>` : ""}
     </div>
     <div class="go">${CHEVRON}</div>
   </a>`;
@@ -660,6 +669,7 @@ function renderDetail(p) {
       <div class="panel heatbox">${p.sport === "nba" ? marginPanel(p) : heatmap(p)}</div>
       <div class="panel">${(p.sport === "nba" ? nbaSquad : squad)(p.home_team, p.home_squad, "var(--home)")}</div>
       <div class="panel">${(p.sport === "nba" ? nbaSquad : squad)(p.away_team, p.away_squad, "var(--away)")}</div>
+      ${p.totals ? ouPanel(p) : ""}
       ${mediaPanel(p)}
     </div>`;
   $("backBtn").onclick = (e) => {
@@ -801,6 +811,31 @@ function nbaChips(p) {
   </div>`;
 }
 
+function ouPanel(p) {
+  const t = p.totals;
+  const when = t.locked && t.set_at ? `${new Date(t.set_at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} 확정`
+                                    : "임시 (경기 전날 22시에 확정)";
+  const items = (t.items || []).map(i => `<div class="row">
+      <span><b>${esc(i.outlet)}</b>${i.author && i.author !== i.outlet ? ` · ${esc(i.author)}` : ""}</span>
+      <span class="r num">총점 <b>${i.total}</b> → ${i.pick === "over" ? "오버" : i.pick === "under" ? "언더" : "기준점"}
+        <a href="${esc(i.url)}" target="_blank" rel="noopener noreferrer">기사 ↗</a></span></div>`).join("");
+  const res = t.result ? `<p style="margin:10px 0 0">실제 총점 <b class="num">${t.actual_total}</b> → <b>${t.result === "over" ? "오버" : "언더"}</b>
+      ${t.locked ? (t.result === t.pick ? "✓ 적중" : "✗ 빗나감") : '<span class="muted">(기준점 확정 전 경기라 적중률에 넣지 않음)</span>'}</p>` : "";
+  return `<div class="panel media"><div class="ouhead"><h4 style="margin:0">언더/오버</h4><span class="muted" style="font-size:12px">${when}</span></div>
+    <div class="ouhead" style="margin-top:8px"><span>기준점 <span class="ln num">${t.line}</span></span>
+      <span class="num">오버 <b>${pct(t.over)}</b> · 언더 <b>${pct(t.under)}</b></span></div>
+    <div class="oubar"><div class="o" style="width:${(t.over * 100).toFixed(1)}%"></div><div class="u" style="width:${(t.under * 100).toFixed(1)}%"></div></div>
+    <div class="oustats num">
+      <span>모델 예상 총점<b>${t.model_total}</b></span>
+      <span>매체 기사 예상 총점<b>${t.media_total ?? "-"}</b>${t.media_count ? `${t.media_count}건 · 오버 ${t.over_votes} / 언더 ${t.under_votes}` : "수집된 기사 없음"}</span>
+      <span>최종 예상 총점<b>${t.expected_total}</b>±${t.total_sd} (표준편차)</span>
+    </div>
+    ${items ? `<div class="squad" style="margin-top:10px">${items}</div>` : ""}
+    ${res}
+    <p class="muted" style="font-size:11px;margin:8px 0 0">기준점은 경기 전날 밤 모델 예상 총점으로 정하고, 이후 매체 기사 예상 총점(적중률 가중, 최대 30%)과 부상 소식으로 오버·언더 확률이 움직입니다.
+      실제 총점은 예상에서 평균 15점 정도 벗어나므로 확률이 50%에 가까우면 판단 근거가 약합니다.</p></div>`;
+}
+
 function marginPanel(p) {
   const b = p.margin_buckets || [];
   const max = Math.max(...b.map(x => x.prob), 0.01);
@@ -885,11 +920,11 @@ function renderNbaAccuracy(acc) {
       ${tile("승패 적중률", pr(s.outcome_rate), `${s.outcome_hits} / ${s.finished}경기`)}
       ${tile("근접 적중률 (두 팀 ±5점)", pr(s.close_rate), `${s.close_hits} / ${s.finished}경기 · 정확히 일치 ${s.exact_hits}`)}
       ${tile("평균 점수 오차", s.mean_abs_err != null ? `${s.mean_abs_err}점` : "-", "팀당 예측 점수와 실제 점수 차이")}
-      ${s.media_matches ? tile("매체 반영 효과", `${pr(s.model_only_rate)} → ${pr(s.with_media_rate)}`, `매체 예측이 있던 ${s.media_matches}경기의 승패 적중률`)
-                        : tile("매체 반영 효과", "-", "매체 예측이 있는 끝난 경기가 아직 없음")}
+      ${tile("언더/오버 적중률", pr(s.ou_rate), s.ou_games ? `${s.ou_hits} / ${s.ou_games}경기 (전날 밤 확정 기준점, 한쪽으로 기운 경기)` : "채점할 경기가 아직 없음")}
     </div>
     <p class="muted acc-note">각 경기일에 <b>그날 이전 데이터만으로</b> 만든 예측을 실제 결과와 비교합니다(주 단위). 농구는 정확한 점수를 맞히기가 거의 불가능해
-      두 팀 점수가 모두 ±5점 안이면 '근접'으로 셉니다. 참고: 홈팀만 찍으면 승패 적중률 약 55~58%.</p>
+      두 팀 점수가 모두 ±5점 안이면 '근접'으로 셉니다. 참고: 홈팀만 찍으면 승패 적중률 약 55~58%, 언더/오버는 찍기만 해도 50%.
+      ${s.media_matches ? `매체 반영 효과: 매체 예측이 있던 ${s.media_matches}경기 승패 적중률 ${pr(s.model_only_rate)} → ${pr(s.with_media_rate)}.` : ""}</p>
     <div class="panel">${rows || '<div class="empty">아직 끝난 경기가 없습니다.</div>'}</div>`;
 }
 

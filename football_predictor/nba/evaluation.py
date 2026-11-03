@@ -29,12 +29,15 @@ def nba_accuracy(reports: list[dict]) -> dict:
                                           "matches": 0, "finished": 0, "outcome_hits": 0, "exact_hits": 0,
                                           "close_hits": 0, "abs_err_sum": 0.0, "margin_err_sum": 0.0,
                                           "media_matches": 0, "model_only_hits": 0, "with_media_hits": 0,
-                                          "items": []})
+                                          "ou_games": 0, "ou_hits": 0, "items": []})
             w["matches"] += 1
             item = {"date": d.isoformat(), "kickoff": p["kickoff"], "home": p["home_team"], "away": p["away_team"],
                     "predicted": p["predicted_score"], "actual": p.get("actual_score"),
                     "outcome_hit": None, "exact_hit": None, "close_hit": None, "abs_err": None,
                     "media_count": (p.get("media") or {}).get("count", 0)}
+            t = p.get("totals") or {}
+            if t.get("locked"):
+                item.update(ou_line=t["line"], ou_pick=t["pick"], ou_over=t["over"], ou_result=t.get("result"))
             if p.get("actual_score"):
                 ph, pa = _pts(p["predicted_score"])
                 ah, aa = _pts(p["actual_score"])
@@ -48,6 +51,10 @@ def nba_accuracy(reports: list[dict]) -> dict:
                 w["close_hits"] += item["close_hit"]
                 w["abs_err_sum"] += item["abs_err"]
                 w["margin_err_sum"] += abs((ph - pa) - (ah - aa))
+                # 언더/오버는 전날 밤 확정한 기준점 경기 중, 매체·부상 소식으로 한쪽에 기운(±2%p 이상) 경기만 채점
+                if t.get("locked") and t.get("result") and abs(t["over"] - 0.5) >= 0.02:
+                    w["ou_games"] += 1
+                    w["ou_hits"] += t["pick"] == t["result"]
                 m = p.get("media") or {}
                 if m.get("count"):
                     w["media_matches"] += 1
@@ -63,19 +70,22 @@ def nba_accuracy(reports: list[dict]) -> dict:
         w["outcome_rate"] = _rate(w["outcome_hits"], n)
         w["exact_rate"] = _rate(w["exact_hits"], n)
         w["close_rate"] = _rate(w["close_hits"], n)
+        w["ou_rate"] = _rate(w["ou_hits"], w["ou_games"])
         w["mean_abs_err"] = round(w.pop("abs_err_sum") / n, 1) if n else None
         w["margin_mae"] = round(w.pop("margin_err_sum") / n, 1) if n else None
         w["items"].sort(key=lambda i: i["kickoff"])
         rows.append(w)
     fin = sum(w["finished"] for w in rows)
     season = {k: sum(w[k] for w in rows) for k in ("finished", "outcome_hits", "exact_hits", "close_hits",
-                                                   "media_matches", "model_only_hits", "with_media_hits")}
+                                                   "media_matches", "model_only_hits", "with_media_hits",
+                                                   "ou_games", "ou_hits")}
     errs = [i["abs_err"] for w in rows for i in w["items"] if i["abs_err"] is not None]
     season.update(outcome_rate=_rate(season["outcome_hits"], fin), exact_rate=_rate(season["exact_hits"], fin),
                   close_rate=_rate(season["close_hits"], fin),
                   mean_abs_err=round(sum(errs) / len(errs), 1) if errs else None,
                   model_only_rate=_rate(season["model_only_hits"], season["media_matches"]),
                   with_media_rate=_rate(season["with_media_hits"], season["media_matches"]),
+                  ou_rate=_rate(season["ou_hits"], season["ou_games"]),
                   complete_rounds=sum(w["complete"] for w in rows))
     done = [w for w in rows if w["complete"]]
     return {"sport": "nba", "rounds": rows, "season": season,
