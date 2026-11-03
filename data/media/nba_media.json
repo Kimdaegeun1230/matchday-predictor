@@ -1,1 +1,78 @@
-{"predictions": [], "collected": {}}
+{
+ "predictions": [
+  {
+   "fixture_id": "21717972",
+   "home": "New York Knicks",
+   "away": "Detroit Pistons",
+   "kickoff": "2026-10-28T00:00+00:00",
+   "outlet": "Fadeaway World",
+   "author": "Vishwesha Kumar",
+   "home_goals": 104,
+   "away_goals": 116,
+   "url": "https://sports.yahoo.com/articles/knicks-vs-pistons-prediction-preview-115508819.html",
+   "headline": "Knicks vs. Pistons Prediction: Preview, Injury Report, Advantages, And X-Factors",
+   "collected_at": "2026-11-03T13:17:14+00:00"
+  },
+  {
+   "fixture_id": "21717973",
+   "home": "San Antonio Spurs",
+   "away": "Sacramento Kings",
+   "kickoff": "2026-10-28T00:00+00:00",
+   "outlet": "Fadeaway World",
+   "author": "Vishwesha Kumar",
+   "home_goals": 124,
+   "away_goals": 104,
+   "url": "https://sports.yahoo.com/articles/spurs-vs-kings-prediction-preview-132432091.html",
+   "headline": "Spurs vs. Kings Prediction: Preview, Injury Report, Advantages, And X-Factors",
+   "collected_at": "2026-11-03T13:17:14+00:00"
+  },
+  {
+   "fixture_id": "21717974",
+   "home": "Los Angeles Lakers",
+   "away": "Portland Trail Blazers",
+   "kickoff": "2026-10-28T03:00+00:00",
+   "outlet": "Fadeaway World",
+   "author": "Fran Leiva",
+   "home_goals": 128,
+   "away_goals": 121,
+   "url": "https://sports.yahoo.com/articles/lakers-vs-trail-blazers-prediction-140642592.html",
+   "headline": "Lakers vs. Trail Blazers Prediction: Preview, Injury Report, Advantages, And X-Factors",
+   "collected_at": "2026-11-03T13:17:14+00:00"
+  },
+  {
+   "fixture_id": "21717975",
+   "home": "Atlanta Hawks",
+   "away": "Miami Heat",
+   "kickoff": "2026-10-28T23:00+00:00",
+   "outlet": "Fadeaway World",
+   "author": "Gautam Varier",
+   "home_goals": 120,
+   "away_goals": 110,
+   "url": "https://sports.yahoo.com/articles/hawks-vs-heat-prediction-preview-135636014.html",
+   "headline": "Hawks vs. Heat Prediction: Preview, Injury Report, Advantages, And X-Factors",
+   "collected_at": "2026-11-03T13:17:14+00:00"
+  }
+ ],
+ "collected": {
+  "21718027": "2026-11-03T13:17:14+00:00",
+  "21718028": "2026-11-03T13:17:14+00:00",
+  "21718029": "2026-11-03T13:17:14+00:00",
+  "21718030": "2026-11-03T13:17:14+00:00",
+  "21718031": "2026-11-03T13:17:14+00:00",
+  "21718032": "2026-11-03T13:17:14+00:00",
+  "21718033": "2026-11-03T13:17:14+00:00",
+  "21718034": "2026-11-03T13:17:14+00:00",
+  "21718035": "2026-11-03T13:17:14+00:00",
+  "21718036": "2026-11-03T13:17:14+00:00",
+  "21718037": "2026-11-03T13:17:14+00:00",
+  "21718038": "2026-11-03T13:17:14+00:00",
+  "21718039": "2026-11-03T13:17:14+00:00",
+  "21718040": "2026-11-03T13:17:14+00:00",
+  "21717971": "2026-11-03T13:17:14+00:00",
+  "21717972": "2026-11-03T13:17:14+00:00",
+  "21717973": "2026-11-03T13:17:14+00:00",
+  "21717974": "2026-11-03T13:17:14+00:00",
+  "21717975": "2026-11-03T13:17:14+00:00",
+  "21717976": "2026-11-03T13:17:14+00:00"
+ }
+}
