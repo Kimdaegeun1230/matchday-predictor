@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
 from datetime import date
@@ -135,6 +136,8 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("nba-lines", help="NBA 언더/오버 기준점 확정 (경기 전날 밤 실행, 오늘 미국 날짜 경기)")
 
+    sub.add_parser("nba-players", help="NBA 현재 로스터 선수들의 지난 시즌 경기별 득점 내려받기 (data/nba_players.json)")
+
     r = sub.add_parser("media-restore", help="배포된 사이트에서 매체 예측 기록을 내려받기 (없을 때만)")
     r.add_argument("--from", dest="site_url", required=True, help="사이트 주소 (예: https://아이디.github.io/저장소/)")
 
@@ -197,6 +200,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "nba-lines":
         r = CoordinatorAgent(write_files=False).engine("NBA").lock_lines(date.today())
         print(f"언더/오버 기준점 새로 확정 {r['new']}경기 · 누적 {r['total']}경기 → data/media/nba_lines.json")
+        return 0
+
+    if args.cmd == "nba-players":
+        from football_predictor.nba.players import PLAYERS_FILE, fetch_players, load_players
+        from football_predictor.nba.sources import season_of
+        out = fetch_players(season_of(date.today()))
+        out["backtest"] = load_players().get("backtest", {})
+        PLAYERS_FILE.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+        print(f"{out['season']} 시즌 선수 {len(out['players'])}명 저장 (실패 {out['failed']}명) → {PLAYERS_FILE}")
         return 0
 
     if args.cmd == "media-restore":

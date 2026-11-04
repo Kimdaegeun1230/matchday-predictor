@@ -10,6 +10,7 @@ from pathlib import Path
 from football_predictor.config import ALL_LEAGUES, NBA
 from football_predictor.nba.engine import NbaEngine, margin_buckets, predicted_score
 from football_predictor.nba.evaluation import nba_accuracy
+from football_predictor.nba.players import parse_gamelog, score_backtest, team_lines
 from football_predictor.nba.sources import NbaGame, NbaInjury, NbaTeam, season_of
 
 TODAY = date.today()
@@ -63,7 +64,78 @@ class FakeInjuries:
 def engine(injuries=(), media_path=None, lines_path=None):
     return NbaEngine(ALL_LEAGUES["NBA"], FakeGames(), FakeInjuries(injuries),
                      media_path=media_path or Path(tempfile.gettempdir()) / "no-nba-media.json",
-                     lines_path=lines_path or Path(tempfile.gettempdir()) / "no-nba-lines.json")
+                     lines_path=lines_path or Path(tempfile.gettempdir()) / "no-nba-lines.json",
+                     players_path=Path(tempfile.gettempdir()) / "no-nba-players.json")
+
+
+def player(name, ppg, team="celtics", play_prob=1.0):
+    pts = [ppg - 6, ppg - 3, ppg - 1, ppg, ppg, ppg + 1, ppg + 3, ppg + 6]
+    return {"name": name, "team": team, "gp": len(pts), "mpg": 30.0, "pts": pts, "play_prob": play_prob}
+
+
+class FakeRosters:
+    def rosters(self):
+        return {"celtics": [{"id": "1", "name": "Star"}, {"id": "2", "name": "Wing"}, {"id": "9", "name": "Rookie"}],
+                "wizards": [{"id": "3", "name": "Guard"}]}
+
+
+class NbaPlayerTest(unittest.TestCase):
+    def test_lines_add_up_to_team_points_and_rise_when_teammate_out(self):
+        roster = [player("A", 30), player("B", 20), player("C", 10), player("D", 50)]
+        rows = team_lines(roster, 110)
+        self.assertAlmostEqual(sum(r["expected"] for r in rows), 110, delta=0.5)
+        out = team_lines([player("A", 30), player("B", 20), player("C", 10), player("D", 50, play_prob=0.0)], 104)
+        self.assertGreater(next(r for r in out if r["name"] == "A")["expected"],
+                           next(r for r in rows if r["name"] == "A")["expected"])
+        self.assertEqual(next(r for r in out if r["name"] == "D")["p10"], 0)
+
+    def test_deep_bench_does_not_shrink_starters(self):
+        rotation = [player(f"R{i}", 11.4) for i in range(10)]
+        bench = [player(f"B{i}", 6) for i in range(5)]
+        self.assertEqual(team_lines(rotation + bench, 114)[0]["expected"], team_lines(rotation, 114)[0]["expected"])
+
+    def test_probabilities_fall_as_threshold_rises(self):
+        r = team_lines([player("A", 25)], 25)[0]
+        self.assertTrue(1 >= r["p10"] >= r["p20"] >= r["p30"] >= r["p40"] >= 0)
+        self.assertGreater(r["p20"], 0.7)
+        self.assertLess(r["p40"], 0.05)
+
+    def test_too_few_games_is_left_out(self):
+        short = {**player("A", 20), "gp": 3, "pts": [20, 20, 20]}
+        self.assertEqual(team_lines([short], 20), [])
+
+    def test_gamelog_counts_regular_season_only(self):
+        ev = lambda i, m, p: {"eventId": i, "stats": [m, p]}
+        data = {"names": ["minutes", "points"], "seasonTypes": [
+            {"displayName": "2025-26 Postseason", "categories": [{"events": [ev("9", "40", "50")]}]},
+            {"displayName": "2025-26 Regular Season", "categories": [
+                {"events": [ev("1", "30", "20"), ev("2", "20", "10")]}, {"events": [ev("1", "30", "20")]}]}]}
+        self.assertEqual(parse_gamelog(data), ([20, 10], 25.0))
+
+    def test_backtest_reports_error_and_top_scorer(self):
+        players = {"1": player("A", 30), "2": player("B", 10)}
+        res = score_backtest([{"team_points": 40, "actual": {"1": 33, "2": 8, "x": 2}}], players)
+        self.assertEqual(res["team_games"], 1)
+        self.assertEqual(res["top_scorer_rate"], 1)
+        self.assertLess(res["mae"], 5)
+
+    def test_engine_uses_current_roster_and_skips_finished_games(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "players.json"
+            path.write_text(json.dumps({"season": "2025-26", "backtest": {}, "players": {
+                "1": player("Star", 30, team="lakers"), "2": player("Wing", 15), "3": player("Guard", 20, team="wizards")}}),
+                encoding="utf-8")
+            eng = NbaEngine(ALL_LEAGUES["NBA"], FakeGames(), FakeInjuries(
+                [NbaInjury("celtics", "Star", "Out", 0.0, "", ppg=30, mpg=30, games_played=60)]),
+                media_path=Path(tmp) / "m.json", lines_path=Path(tmp) / "l.json", players_path=path,
+                roster_source=FakeRosters())
+            preds = {p["match_id"]: p for p in eng.predict(TODAY)["predictions"]}
+            rows = preds[9001]["home_squad"]["players"]
+            self.assertEqual({r["name"] for r in rows}, {"Star", "Wing"})      # 이적 반영, 기록 없는 신인 제외
+            self.assertEqual(next(r for r in rows if r["name"] == "Star")["p10"], 0)
+            self.assertEqual(preds[9001]["player_meta"]["season"], "2025-26")
+            finished = eng.predict(TODAY - timedelta(days=5))["predictions"]
+            self.assertTrue(all("player_meta" not in p for p in finished))
 
 
 class NbaModelTest(unittest.TestCase):
@@ -81,7 +153,7 @@ class NbaModelTest(unittest.TestCase):
         top = sorted(r["teams"], key=lambda t: t["rating"], reverse=True)[0]
         self.assertEqual(top["team"], "celtics")
         self.assertEqual([e["agent"] for e in r["agent_log"]],
-                         ["nba_data", "nba_quality", "nba_team", "nba_injury", "nba_predictor", "nba_media", "nba_totals"])
+                         ["nba_data", "nba_quality", "nba_team", "nba_injury", "nba_predictor", "nba_media", "nba_totals", "nba_players"])
 
     def test_star_injury_lowers_team_score(self):
         base = {x["match_id"]: x for x in engine().predict(TODAY)["predictions"]}[9001]

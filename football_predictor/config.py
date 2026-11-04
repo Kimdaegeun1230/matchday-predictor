@@ -140,6 +140,11 @@ class NbaConfig:
     injury_cap: float = 9.0             # 한 팀 결장 손실 상한(완만하게 포화) — 남은 선수가 공을 더 잡음
     injury_regular_share: float = 0.5 # 팀 경기의 이 비율 이상 뛴 선수만 결장 영향 반영 (오래 빠진 선수는 이미 성적에 반영됨)
     injury_window_days: int = 3       # 오늘 기준 이 기간 안의 경기에만 현재 부상 정보 적용
+    player_min_games: int = 5          # 지난 시즌 이보다 적게 뛴 선수는 득점 예측 제외
+    player_rotation: int = 10          # 팀 득점을 나눠 갖는 상위 선수 수 (이번 시즌 경기로 검증해 정함)
+    player_ratio_min: float = 0.8      # 선수 득점 합을 팀 예상 득점에 맞출 때 비율 하한
+    player_ratio_max: float = 1.25     # 비율 상한
+    player_bandwidth: float = 3.0      # N점 이상 확률 계산 때 경기별 득점을 뭉개는 폭
     request_interval: float = 12.5    # balldontlie 무료 등급: 분당 5회
 
 

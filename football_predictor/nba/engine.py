@@ -22,6 +22,7 @@ from ..agents.base import Agent
 from ..config import DATA_DIR, MEDIA, NBA, League, MediaConfig, NbaConfig
 from ..media.store import MediaStore, pundit_key
 from ..providers.http import ApiError
+from .players import PLAYERS_FILE, EspnRosterSource, load_players, team_lines
 from .sources import BalldontlieSource, EspnInjurySource, NbaData, NbaGame, NbaInjury, collect, season_of
 
 log = logging.getLogger("agent.nba")
@@ -432,17 +433,57 @@ class NbaTotalsAgent(Agent):
         return f"기준점 확정 {locked}경기 · 매체 총점 반영 {with_media}경기 (총점 표준편차 {ctx.total_sd:.1f})"
 
 
+class NbaPlayerAgent(Agent):
+    """지난 시즌 경기별 득점으로 앞으로 있을 경기의 선수별 예상 득점·N점 이상 확률."""
+    name = "nba_players"
+    role = "선수별 예상 득점과 득점 확률"
+
+    def __init__(self, engine: "NbaEngine"):
+        super().__init__()
+        self.engine = engine
+
+    def run(self, ctx: NbaContext) -> str:
+        data = load_players(self.engine.players_path)
+        if not data.get("players"):
+            return "선수 기록 없음 (python main.py nba-players)"
+        rosters = self.engine.rosters()
+        by_team = defaultdict(list)
+        if rosters:
+            for team, roster in rosters.items():
+                by_team[team] = [data["players"][a["id"]] for a in roster if a["id"] in data["players"]]
+        else:
+            for pl in data["players"].values():
+                by_team[pl["team"]].append(pl)
+        meta = {"season": data["season"], "backtest": data.get("backtest") or {}}
+        by_id = {p["match_id"]: p for p in ctx.predictions}
+        done = 0
+        for g in ctx.fixtures:
+            p = by_id.get(g.id)
+            if not p or g.finished:
+                continue
+            for team, side, points in ((g.home, "home", p["home_xg"]), (g.away, "away", p["away_xg"])):
+                play = {m["name"]: m["play_prob"] for m in ctx.missing.get(team, [])}
+                rows = team_lines([{**pl, "play_prob": play.get(pl["name"], 1.0)} for pl in by_team[team]], points)
+                p[f"{side}_squad"]["players"] = rows[:10]
+            p["player_meta"] = meta
+            done += 1
+        return f"{done}경기 선수별 득점 예측 ({data['season']} 시즌 기록)"
+
+
 class NbaEngine:
     """CoordinatorAgent 가 NBA 리그일 때 쓰는 파이프라인. 출처 수집은 한 번 해 두고 날짜마다 재사용한다."""
 
     def __init__(self, league: League, games_source=None, injury_source=None, media_path: Path = NBA_MEDIA_FILE,
-                 lines_path: Path = NBA_LINES_FILE,
+                 lines_path: Path = NBA_LINES_FILE, players_path: Path = PLAYERS_FILE, roster_source=None,
                  memo_seconds: int = 600):
         self.league = league
         self.games_source = games_source or BalldontlieSource()
         self.injury_source = injury_source or EspnInjurySource()
         self.media_path = media_path
         self.lines_path = lines_path
+        self.players_path = players_path
+        self.roster_source = roster_source or EspnRosterSource()
+        self._rosters: tuple[float, dict] | None = None
         self.memo_seconds = memo_seconds
         self._data: tuple[float, NbaData] | None = None
 
@@ -453,9 +494,19 @@ class NbaEngine:
         self._data = (time.time(), d)
         return d
 
+    def rosters(self) -> dict:
+        """현재 로스터 (실패하면 빈 dict → 선수 파일에 적힌 팀을 씀)."""
+        if not self._rosters or time.time() - self._rosters[0] >= self.memo_seconds:
+            try:
+                self._rosters = (time.time(), self.roster_source.rosters())
+            except (ApiError, KeyError, ValueError) as exc:
+                log.warning("로스터 못 받음, 지난 시즌 팀으로 표시: %s", exc)
+                self._rosters = (time.time(), {})
+        return self._rosters[1]
+
     def team(self) -> list[Agent]:
         return [NbaDataAgent(self), NbaQualityAgent(), NbaTeamAgent(), NbaInjuryAgent(), NbaPredictorAgent(),
-                NbaMediaAgent(self.media_path), NbaTotalsAgent(self.media_path, self.lines_path)]
+                NbaMediaAgent(self.media_path), NbaTotalsAgent(self.media_path, self.lines_path), NbaPlayerAgent(self)]
 
     def lock_lines(self, today: date) -> dict:
         """경기 전날 밤(한국 시간) 실행: 미국 날짜가 today 인 경기 중 아직 기준점이 없는 것을 모델 총점으로 확정."""

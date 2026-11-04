@@ -670,6 +670,7 @@ function renderDetail(p) {
       <div class="panel">${(p.sport === "nba" ? nbaSquad : squad)(p.home_team, p.home_squad, "var(--home)")}</div>
       <div class="panel">${(p.sport === "nba" ? nbaSquad : squad)(p.away_team, p.away_squad, "var(--away)")}</div>
       ${p.totals ? ouPanel(p) : ""}
+      ${p.player_meta ? playerPanel(p) : ""}
       ${mediaPanel(p)}
     </div>`;
   $("backBtn").onclick = (e) => {
@@ -809,6 +810,28 @@ function nbaChips(p) {
     ${p.score_sd ? `<span class="chip" data-tip="실제 점수가 10번 중 8번 들어올 범위. 예상 점수는 평균이라 110점 근처에 몰리지만, 실제 점수는 이 범위 안에서 크게 흩어집니다">득점 범위 80% <b>${esc(p.home_tla)} ${nbaRange(p.home_xg, p.score_sd)} · ${esc(p.away_tla)} ${nbaRange(p.away_xg, p.score_sd)}</b></span>` : ""}
     ${(p.notes || []).filter(n => n.includes("백투백")).map(n => `<span class="chip">${esc(n)}</span>`).join("")}
   </div>`;
+}
+
+function playerPanel(p) {
+  const meta = p.player_meta, bt = meta.backtest || {};
+  const table = (name, s, color, xg) => {
+    const sum = (s.players || []).reduce((a, r) => a + r.expected * r.play_prob, 0);
+    const gap = sum - xg > 5 ? `<p class="muted" style="font-size:11px;margin:6px 0 0">이 팀은 선수별 예상 합(${sum.toFixed(0)}점)이 팀 예상 득점(${xg.toFixed(0)}점)보다 많습니다. 조정 폭을 제한했기 때문이라 선수 수치가 다소 높을 수 있습니다.</p>` : "";
+    const rows = (s.players || []).map(r => `<tr>
+        <td class="l">${esc(r.name)}${r.play_prob < 1 ? ` <span class="muted">출전 ${pct(r.play_prob)}</span>` : ""}</td>
+        <td><b>${r.expected}</b></td><td>${r.low}–${r.high}</td>
+        <td>${pct(r.p10)}</td><td>${pct(r.p20)}</td><td>${pct(r.p30)}</td>
+        <td class="muted">${r.ppg} · ${r.gp}경기</td></tr>`).join("");
+    return `<div class="tname" style="margin-top:12px"><span class="sw" style="background:${color}"></span>${esc(name)}</div>
+      ${rows ? `<div class="tablewrap"><table><thead><tr><th class="l">선수</th><th>예상 득점</th><th>범위 80%</th><th>10점+</th><th>20점+</th><th>30점+</th><th>지난 시즌</th></tr></thead><tbody>${rows}</tbody></table></div>`
+             : '<p class="muted">선수 기록 없음</p>'}${gap}`;
+  };
+  const known = bt.lineup_known, unknown = bt.lineup_unknown;
+  const check = known ? `이번 시즌 ${known.team_games}개 팀 경기(${esc(bt.from)}~${esc(bt.to)})로 검증한 선수당 평균 오차는 ${unknown.mae}~${known.mae}점이고, 팀 최다 득점자는 ${pct(unknown.top_scorer_rate)}~${pct(known.top_scorer_rate)} 맞혔습니다.` : "";
+  return `<div class="panel media"><h4 style="margin:0">선수별 득점 예측</h4>
+    ${table(p.home_team, p.home_squad, "var(--home)", p.home_xg)}${table(p.away_team, p.away_squad, "var(--away)", p.away_xg)}
+    <p class="muted" style="font-size:11px;margin:10px 0 0">${esc(meta.season)} 정규시즌 경기별 득점을 이번 경기 팀 예상 득점에 맞춰 조정한 값입니다. 신인과 지난 시즌 5경기 미만 선수는 빠지고, 이적으로 달라진 역할은 반영되지 않습니다.
+      확률은 출전 확률을 곱한 값이고, 출처는 ESPN(비공식)입니다. ${check}</p></div>`;
 }
 
 function ouPanel(p) {
