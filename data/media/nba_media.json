@@ -519,6 +519,19 @@
    "url": "https://sports.yahoo.com/articles/mmbets-mavericks-look-avoid-monday-202836666.html",
    "headline": "MMBets: Mavericks look to avoid Monday's trap game against the Sacramento Kings",
    "collected_at": "2026-11-05T13:20:43+00:00"
+  },
+  {
+   "fixture_id": "21718054",
+   "home": "Cleveland Cavaliers",
+   "away": "New York Knicks",
+   "kickoff": "2026-11-08T01:00+00:00",
+   "outlet": "SI (Knicks On SI)",
+   "author": "Kento Kato",
+   "home_goals": 105,
+   "away_goals": 112,
+   "url": "https://www.si.com/nba/knicks/onsi/predicting-result-knicks-13-remaining-games-november-01m6bhsxtw58",
+   "headline": "Predicting the Result of Knicks' 13 Remaining Games in November",
+   "collected_at": "2026-11-06T13:18:37+00:00"
   }
  ],
  "collected": {
@@ -601,6 +614,13 @@
   "21718023": "2026-11-05T13:20:43+00:00",
   "21718024": "2026-11-05T13:20:43+00:00",
   "21718025": "2026-11-05T13:20:43+00:00",
-  "21718026": "2026-11-05T13:20:43+00:00"
+  "21718026": "2026-11-05T13:20:43+00:00",
+  "21718052": "2026-11-06T13:18:37+00:00",
+  "21718053": "2026-11-06T13:18:37+00:00",
+  "21718054": "2026-11-06T13:18:37+00:00",
+  "21718055": "2026-11-06T13:18:37+00:00",
+  "21718056": "2026-11-06T13:18:37+00:00",
+  "21718057": "2026-11-06T13:18:37+00:00",
+  "21718058": "2026-11-06T13:18:37+00:00"
  }
 }
