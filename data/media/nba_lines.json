@@ -198,5 +198,61 @@
   "away": "San Antonio Spurs",
   "date": "2026-11-06",
   "set_at": "2026-11-06T13:16+00:00"
+ },
+ "21718052": {
+  "line": 221.5,
+  "model_total": 221.6,
+  "home": "Indiana Pacers",
+  "away": "Denver Nuggets",
+  "date": "2026-11-07",
+  "set_at": "2026-11-07T13:15+00:00"
+ },
+ "21718053": {
+  "line": 217.5,
+  "model_total": 217.3,
+  "home": "Atlanta Hawks",
+  "away": "Brooklyn Nets",
+  "date": "2026-11-07",
+  "set_at": "2026-11-07T13:15+00:00"
+ },
+ "21718054": {
+  "line": 214.5,
+  "model_total": 214.3,
+  "home": "Cleveland Cavaliers",
+  "away": "New York Knicks",
+  "date": "2026-11-07",
+  "set_at": "2026-11-07T13:15+00:00"
+ },
+ "21718055": {
+  "line": 209.5,
+  "model_total": 209.8,
+  "home": "Oklahoma City Thunder",
+  "away": "Washington Wizards",
+  "date": "2026-11-07",
+  "set_at": "2026-11-07T13:15+00:00"
+ },
+ "21718056": {
+  "line": 214.5,
+  "model_total": 214.1,
+  "home": "Golden State Warriors",
+  "away": "Orlando Magic",
+  "date": "2026-11-07",
+  "set_at": "2026-11-07T13:15+00:00"
+ },
+ "21718057": {
+  "line": 222.5,
+  "model_total": 222.4,
+  "home": "Phoenix Suns",
+  "away": "Houston Rockets",
+  "date": "2026-11-07",
+  "set_at": "2026-11-07T13:15+00:00"
+ },
+ "21718058": {
+  "line": 214.5,
+  "model_total": 214.8,
+  "home": "Portland Trail Blazers",
+  "away": "San Antonio Spurs",
+  "date": "2026-11-07",
+  "set_at": "2026-11-07T13:15+00:00"
  }
 }
