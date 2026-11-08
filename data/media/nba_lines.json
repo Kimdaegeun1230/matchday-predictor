@@ -254,5 +254,61 @@
   "away": "San Antonio Spurs",
   "date": "2026-11-07",
   "set_at": "2026-11-07T13:15+00:00"
+ },
+ "21718059": {
+  "line": 225.5,
+  "model_total": 225.3,
+  "home": "Chicago Bulls",
+  "away": "Philadelphia 76ers",
+  "date": "2026-11-08",
+  "set_at": "2026-11-08T13:13+00:00"
+ },
+ "21718060": {
+  "line": 219.5,
+  "model_total": 219.4,
+  "home": "Detroit Pistons",
+  "away": "Los Angeles Lakers",
+  "date": "2026-11-08",
+  "set_at": "2026-11-08T13:13+00:00"
+ },
+ "21718061": {
+  "line": 217.5,
+  "model_total": 217.2,
+  "home": "Minnesota Timberwolves",
+  "away": "Utah Jazz",
+  "date": "2026-11-08",
+  "set_at": "2026-11-08T13:13+00:00"
+ },
+ "21718062": {
+  "line": 218.5,
+  "model_total": 218.5,
+  "home": "Dallas Mavericks",
+  "away": "Brooklyn Nets",
+  "date": "2026-11-08",
+  "set_at": "2026-11-08T13:13+00:00"
+ },
+ "21718063": {
+  "line": 223.5,
+  "model_total": 223.9,
+  "home": "Milwaukee Bucks",
+  "away": "Boston Celtics",
+  "date": "2026-11-08",
+  "set_at": "2026-11-08T13:13+00:00"
+ },
+ "21718064": {
+  "line": 224.5,
+  "model_total": 224.6,
+  "home": "LA Clippers",
+  "away": "New Orleans Pelicans",
+  "date": "2026-11-08",
+  "set_at": "2026-11-08T13:13+00:00"
+ },
+ "21718065": {
+  "line": 236.5,
+  "model_total": 236.2,
+  "home": "Sacramento Kings",
+  "away": "Miami Heat",
+  "date": "2026-11-08",
+  "set_at": "2026-11-08T13:13+00:00"
  }
 }
