@@ -72,7 +72,9 @@ class CollectorTest(unittest.TestCase):
         self.assertEqual(first["fallbacks"], "default")
         self.assertEqual(first["tools"][0]["type"], "web_search_20260209")
         self.assertIn("skysports.com", first["tools"][0]["allowed_domains"])
+        self.assertIn("interfootball.co.kr", first["tools"][0]["allowed_domains"])  # 국내 매체
         self.assertNotIn("bbc.co.uk", first["tools"][0]["allowed_domains"])  # AI 접근 차단 매체는 넣지 않음
+        self.assertNotIn("naver.com", first["tools"][0]["allowed_domains"])
         self.assertEqual(first["tools"][1]["input_schema"]["properties"]["predictions"]["items"]
                          ["properties"]["fixture_id"]["enum"], ["11"])
         self.assertEqual(msgs.calls[1]["messages"][-1]["role"], "assistant")  # 멈춘 지점부터 이어서

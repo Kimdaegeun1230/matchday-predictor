@@ -1,7 +1,7 @@
 """API 키 없이 매체 예측을 모으는 경로: 예약 실행되는 Claude(이 PC의 Claude 앱)가 직접 검색한다.
 
   1. media-due    → 수집할 경기 목록을 JSON 으로 내보냄 (fixture_id 포함)
-  2. (Claude 가 영국 매체를 검색해 found.json 작성)
+  2. (Claude 가 영국·국내 매체를 검색해 found.json 작성)
   3. media-import → found.json 을 검사(허용 매체 링크, 알려진 경기, 스코어 범위)해 media.json 에 합침
 
 검사 규칙은 API 경로(MediaCollector)와 같은 함수를 쓴다.

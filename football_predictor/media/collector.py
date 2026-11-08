@@ -1,7 +1,7 @@
-"""영국 현지 매체의 경기 스코어 예측을 Claude + 웹 검색으로 수집한다.
+"""영국 현지·국내 매체의 경기 스코어 예측을 Claude + 웹 검색으로 수집한다.
 
 한 번의 호출에 같은 날짜의 경기 여러 개를 묶어서 보낸다.
-Claude 가 허용된 영국 매체 도메인만 검색해, 실제로 찾은 예측만 record_predictions 도구로 돌려준다.
+Claude 가 허용된 영국·국내 매체 도메인만 검색해, 실제로 찾은 예측만 record_predictions 도구로 돌려준다.
 기사 본문은 저장하지 않고 (매체, 작성자, 예측 스코어, 링크, 제목)만 남긴다.
 """
 from __future__ import annotations
@@ -17,9 +17,9 @@ log = logging.getLogger(__name__)
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
 MAX_CONTINUATIONS = 5
 
-SYSTEM_PROMPT = """You collect English Premier League score predictions published by UK media outlets.
+SYSTEM_PROMPT = """You collect English Premier League score predictions published by UK media outlets and Korean football outlets.
 
-For each fixture you are given, search the allowed UK outlets for articles in which a named pundit, columnist or \
+For each fixture you are given, search the allowed outlets for articles in which a named pundit, columnist or \
 the outlet itself predicts the final score of that match (for example weekly prediction columns, match previews \
 with a "prediction" line, or pundit-versus-guest prediction features).
 
@@ -33,6 +33,7 @@ the prediction is unsigned.
   data-model win probabilities), because the app already has its own model.
 - Per-match preview pages usually carry the scoreline in a closing "prediction" or "We say:" line \
 (Sports Mole, WhoScored, Squawka, Sporting Life); weekly columns cover many matches at once (Sky Sports "Jones Knows").
+- Korean outlets publish per-match previews in Korean: Interfootball "[승부예측] ... 스코어 예측" and Sportal Korea "[매치 스포일러]". Search with Korean team names (e.g. "토트넘 맨유 승부예측"). When an article gives two scorelines ("2-1 또는 1-1"), record the first one. Skip scorelines quoted from Opta or other supercomputers.
 - When you have finished searching, call record_predictions exactly once with everything you found. If you found \
 nothing, call it with an empty list."""
 
@@ -40,7 +41,7 @@ nothing, call it with an empty list."""
 def _record_tool(fixture_ids: list[str]) -> dict:
     return {
         "name": "record_predictions",
-        "description": "Save the scoreline predictions found in UK media for the given fixtures. "
+        "description": "Save the scoreline predictions found in UK or Korean media for the given fixtures. "
                        "Call exactly once, after searching, with every prediction found (empty list if none).",
         "strict": True,
         "input_schema": {
@@ -96,7 +97,7 @@ class MediaCollector:
         lines = "\n".join(f"- fixture_id {f['id']}: {f['home']} vs {f['away']} (kick-off {f['kickoff']} UTC)"
                           for f in fixtures)
         user = {"role": "user", "content": f"Premier League fixtures:\n{lines}\n\n"
-                                           "Find UK media score predictions for these fixtures."}
+                                           "Find UK and Korean media score predictions for these fixtures."}
         tools = [
             {"type": "web_search_20260209", "name": "web_search",
              "max_uses": self.cfg.max_searches_per_call, "allowed_domains": MEDIA_DOMAINS},

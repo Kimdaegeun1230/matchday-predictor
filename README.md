@@ -32,7 +32,7 @@ python main.py check-sources
 
 출처별로 응답 여부, 가져온 팀·경기·결과·선수·부상 수, 무료 등급에서 막힌 항목, 출처 간 스코어 불일치를 보여준다.
 
-## 영국 현지 매체 예측 반영 (`media/`, `agents/media_agent.py`)
+## 영국 현지·국내 매체 예측 반영 (`media/`, `agents/media_agent.py`)
 
 1. **수집** — 두 가지 방법
    - **예약 실행 (기본, 추가 비용 없음)**: PC 의 Claude 앱이 매일 오후 6시에 `media-due` 로 대상 경기를 받고,
@@ -77,7 +77,7 @@ CoordinatorAgent (총괄: 순서대로 실행, 결과 캐시, 다음 경기일 �
  ├─ TeamAnalystAgent     홈/원정 공격력·수비력(상대 보정 + 시간 가중), 최근 폼, 승격팀 사전값
  ├─ PlayerAnalystAgent   득점·도움 기여도 × (1 - 출전 확률) → 공격·수비 보정 계수
  ├─ PredictionAgent      Dixon-Coles 포아송 → 기대득점, 예상 스코어, 승무패·오버·BTTS 확률
- ├─ MediaConsensusAgent  영국 매체 예측을 칼럼니스트 적중률로 가중해 승무패 확률에 일부 반영
+ ├─ MediaConsensusAgent  영국·국내 매체 예측을 칼럼니스트 적중률로 가중해 승무패 확률에 일부 반영
  └─ ReportAgent          JSON 리포트 발행 (output/) → 웹/외부에서 사용
 ```
 

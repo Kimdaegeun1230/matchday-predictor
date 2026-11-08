@@ -122,7 +122,7 @@ def main(argv: list[str] | None = None) -> int:
     a = sub.add_parser("accuracy", help="라운드별 예측 적중률 (결과 적중 / 스코어 적중)")
     a.add_argument("--latest", action="store_true", help="가장 최근에 끝난 라운드만")
 
-    m = sub.add_parser("collect-media", help="영국 현지 매체 예측 수집 (Claude, ANTHROPIC_API_KEY 필요)")
+    m = sub.add_parser("collect-media", help="영국 현지·국내 매체 예측 수집 (Claude, ANTHROPIC_API_KEY 필요)")
     m.add_argument("--max-calls", type=int, default=None, help="이번 실행의 Claude 호출 상한")
 
     d = sub.add_parser("media-due", help="매체 예측을 수집할 경기 목록을 JSON 으로 내보내기 (예약 실행용)")

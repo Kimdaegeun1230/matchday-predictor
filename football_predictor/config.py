@@ -88,7 +88,7 @@ OPENFOOTBALL_URL = "https://raw.githubusercontent.com/openfootball/football.json
 MEDIA_FILE = DATA_DIR / "media" / "media.json"
 MEDIA_MODEL = os.environ.get("MEDIA_MODEL", "claude-opus-5-5")
 MEDIA_EFFORT = os.environ.get("MEDIA_EFFORT", "medium")
-# 검색 허용 도메인: Claude(Anthropic)의 접근을 허용하는 영국 축구 매체만.
+# 검색 허용 도메인: Claude(Anthropic)의 접근을 허용하는 영국·국내 축구 매체만.
 # BBC, Guardian, Telegraph, Times, Independent, Mail, Mirror, Standard, Sun, Express, talkSPORT, Reach 지역지,
 # The Athletic(nytimes.com)은 AI 접근을 막아 두었으므로(2026-10 확인) 넣지 않는다 — 넣으면 웹 검색 요청이 400 으로 실패.
 MEDIA_DOMAINS = [
@@ -97,6 +97,9 @@ MEDIA_DOMAINS = [
     # 프리뷰·칼럼에 예측이 실리는 영국 매체
     "espn.co.uk", "eurosport.co.uk", "fourfourtwo.com", "football365.com", "planetfootball.com",
     "givemesport.com", "90min.com", "teamtalk.com", "thesportsman.com", "goal.com",
+    # 경기별 예상 스코어 기사를 내는 국내 매체 (인터풋볼 '승부예측', 스포탈코리아 '매치 스포일러').
+    # 네이버·스포츠조선·연합뉴스 등은 AI 접근 차단(2026-11 확인)이라 넣지 않음.
+    "interfootball.co.kr", "sportalkorea.com",
 ]
 
 # NBA: AI 접근을 허용하는 미국 매체만. Sporting News, USA Today 는 차단(2026-11 확인), Dimers 는 기사 아닌 모델이라 제외.
