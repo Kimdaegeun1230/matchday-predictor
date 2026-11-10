@@ -59,8 +59,8 @@ def get_league(key: str) -> League:
 @dataclass(frozen=True)
 class ModelConfig:
     # 팀 분석
-    time_decay_xi: float = 0.005      # 경기 가중치 = exp(-xi * 경과일수)
-    shrinkage_games: float = 6.0      # 시즌 초반 표본 부족 시 리그 평균(1.0)으로 당기는 강도
+    time_decay_xi: float = 0.003      # 경기 가중치 = exp(-xi * 경과일수) (지난 경기 검증으로 정함)
+    shrinkage_games: float = 8.0      # 시즌 초반 표본 부족 시 리그 평균(1.0)으로 당기는 강도
     form_window: int = 5              # 최근 폼 계산 경기 수
     form_weight: float = 0.08         # 폼이 기대득점에 미치는 최대 영향 (±8%)
     promoted_attack_prior: float = 0.85   # 승격팀 공격력 사전값 (리그 평균 = 1.0)
