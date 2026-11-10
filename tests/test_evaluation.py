@@ -43,14 +43,19 @@ class ScoreVarietyTest(unittest.TestCase):
         self.assertTrue(all(oc(s) == "D" for s in draws))
         self.assertGreaterEqual(len(draws), 3)          # 0-0, 1-1, 2-2 …
 
-    def test_default_is_top_score_within_predicted_result(self):
+    def test_pool_one_is_top_score_within_predicted_result(self):
         mat = score_matrix(1.6, 1.2, -0.1, 10)   # 홈 우세지만 단일 스코어 1위는 1-1 인 경기
-        s = summarize(mat, seed=7)
+        s = summarize(mat, ModelConfig(score_pool=1), seed=7)
         top_overall = s["top_scores"][0]["score"]
         self.assertEqual(s["predicted_score"], s["mode_score"])
         self.assertEqual(oc(s["predicted_score"]), "H")          # 승무패 예측과 일치
         if oc(top_overall) == "D":
             self.assertNotEqual(s["predicted_score"], top_overall)
+
+    def test_default_varies_scores(self):
+        mat = score_matrix(1.9, 0.9, -0.1, 10)
+        scores = {summarize(mat, seed=s)["predicted_score"] for s in range(100)}
+        self.assertGreaterEqual(len(scores), 4)          # 1-0·2-1 만 반복하지 않음
 
 
 class RoundAccuracyTest(unittest.TestCase):
