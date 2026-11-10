@@ -532,6 +532,45 @@
    "url": "https://www.si.com/nba/knicks/onsi/predicting-result-knicks-13-remaining-games-november-01m6bhsxtw58",
    "headline": "Predicting the Result of Knicks' 13 Remaining Games in November",
    "collected_at": "2026-11-06T13:18:37+00:00"
+  },
+  {
+   "fixture_id": "21718080",
+   "home": "Portland Trail Blazers",
+   "away": "Oklahoma City Thunder",
+   "kickoff": "2026-11-11T04:00+00:00",
+   "outlet": "The Oklahoman",
+   "author": "Justin Martinez",
+   "home_goals": 108,
+   "away_goals": 112,
+   "url": "https://sports.yahoo.com/articles/channel-thunder-vs-trail-blazers-110715752.html",
+   "headline": "What channel is Thunder vs Trail Blazers on TV tonight? Time, NBA schedule, injury report",
+   "collected_at": "2026-11-10T12:37:52+00:00"
+  },
+  {
+   "fixture_id": "21718074",
+   "home": "New York Knicks",
+   "away": "Milwaukee Bucks",
+   "kickoff": "2026-11-11T00:30+00:00",
+   "outlet": "SI (Knicks On SI)",
+   "author": "Kento Kato",
+   "home_goals": 123,
+   "away_goals": 111,
+   "url": "https://sports.yahoo.com/articles/predicting-result-knicks-13-remaining-210005109.html",
+   "headline": "Predicting the Result of Knicks' 13 Remaining Games in November",
+   "collected_at": "2026-11-10T12:37:52+00:00"
+  },
+  {
+   "fixture_id": "21718082",
+   "home": "New York Knicks",
+   "away": "Cleveland Cavaliers",
+   "kickoff": "2026-11-12T00:00+00:00",
+   "outlet": "SI (Knicks On SI)",
+   "author": "Kento Kato",
+   "home_goals": 105,
+   "away_goals": 119,
+   "url": "https://sports.yahoo.com/articles/predicting-result-knicks-13-remaining-210005109.html",
+   "headline": "Predicting the Result of Knicks' 13 Remaining Games in November",
+   "collected_at": "2026-11-10T12:37:52+00:00"
   }
  ],
  "collected": {
@@ -636,6 +675,22 @@
   "21718070": "2026-11-08T13:14:48+00:00",
   "21718071": "2026-11-08T13:14:48+00:00",
   "21718072": "2026-11-08T13:14:48+00:00",
-  "21718073": "2026-11-08T13:14:48+00:00"
+  "21718073": "2026-11-08T13:14:48+00:00",
+  "21718074": "2026-11-10T12:37:52+00:00",
+  "21718075": "2026-11-10T12:37:52+00:00",
+  "21718076": "2026-11-10T12:37:52+00:00",
+  "21718078": "2026-11-10T12:37:52+00:00",
+  "21718079": "2026-11-10T12:37:52+00:00",
+  "21718080": "2026-11-10T12:37:52+00:00",
+  "21718081": "2026-11-10T12:37:52+00:00",
+  "21718082": "2026-11-10T12:37:52+00:00",
+  "21718083": "2026-11-10T12:37:52+00:00",
+  "21718084": "2026-11-10T12:37:52+00:00",
+  "21718085": "2026-11-10T12:37:52+00:00",
+  "21718086": "2026-11-10T12:37:52+00:00",
+  "21718087": "2026-11-10T12:37:52+00:00",
+  "21718088": "2026-11-10T12:37:52+00:00",
+  "21718089": "2026-11-10T12:37:52+00:00",
+  "21718090": "2026-11-10T12:37:52+00:00"
  }
 }
